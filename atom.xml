@@ -1,16 +1,988 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
 
-  <title><![CDATA[My Octopress Blog]]></title>
-  <link href="http://changchang.github.com/atom.xml" rel="self"/>
-  <link href="http://changchang.github.com/"/>
-  <updated>2012-10-27T01:02:36+08:00</updated>
-  <id>http://changchang.github.com/</id>
+  <title><![CDATA[Little Cat in Big World]]></title>
+  <link href="http://blog.chang.net/atom.xml" rel="self"/>
+  <link href="http://blog.chang.net/"/>
+  <updated>2012-10-27T01:13:45+08:00</updated>
+  <id>http://blog.chang.net/</id>
   <author>
-    <name><![CDATA[Your Name]]></name>
+    <name><![CDATA[changchang]]></name>
     
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[libev源码分析 -- 常用watcher]]></title>
+    <link href="http://blog.chang.net/blog/2012/10/20/libev-watchers/"/>
+    <updated>2012-10-20T00:00:00+08:00</updated>
+    <id>http://blog.chang.net/blog/2012/10/20/libev-watchers</id>
+    <content type="html"><![CDATA[<p>在上一篇文章里，我们分析了libev整体设计思想和主循环的工作原理，也提到了watcher是衔接开发者代码的主要入口。watcher与开发者最接近，也与具体事件处理逻辑最接近。所以，watcher的具体实现，与性能的关系也相当密切。下面，我们就来分析一下，libev中常用的几种watcher的设计与实现。</p>
+
+<!-- more -->
+
+
+<h1>ev_io</h1>
+
+<h2>ev_io与底层io</h2>
+
+<p>ev_io的主要使命就是监听并响应指定文件描述fd上的读写事件。对fd的监听工作，主要委托给底层的io库来完成。libev对目前比较流行的io库都提供了支持，如：select, epoll以及windows的iocp等。在这里libev使用了Adaptor模式，通过统一的适配层隐藏了底层io库的细节。在loop初始化的时候（loop_init），会根据配置将函数指针绑定到底层的io库函数对应的适配代码上。所以，开发者可以很方便的把代码切换到不同的底层实现上。相关的函数有：backend_modify，向底层库注册fd事件，如：epoll的epoll_ctl；backend_poll，向底层库轮询fd上是否有感兴趣的事件发生，如：epoll的epoll_wait。适配器实现的代码可以在ev_LIB.c中看到，LIB是io库的名字，如：ev_epoll.c，ev_win32.c等。</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/c6/ef/2a/ac177b3435994c7088ef9eb3d32394f2.png" alt="ev_io层次结构图" />
+</center>
+
+
+<h2>ev_io的结构</h2>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="k">typedef</span> <span class="k">struct</span> <span class="n">ev_io</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="n">EV_WATCHER_LIST</span> <span class="p">(</span><span class="n">ev_io</span><span class="p">)</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="kt">int</span> <span class="n">fd</span><span class="p">;</span>     <span class="cm">/* ro */</span>
+</span><span class='line'>  <span class="kt">int</span> <span class="n">events</span><span class="p">;</span> <span class="cm">/* ro */</span>
+</span><span class='line'><span class="p">}</span> <span class="n">ev_io</span><span class="p">;</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>其中，EV_WATCHER_LIST是EV_WATCHER结构的链表节点结构。fd是监听的文件描述符，events是感兴趣的事件。
+ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了。ev_io的实例被存储在loop->anfds的结构中。anfds的结构如下图所示：</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/9c/37/cc/91f3e08d93a0d2f41b936c6f2f4895f5.png" alt="anfds结构图"/>
+</center>
+
+
+<p>anfds其实是一个数组，它使用fd作为下标，数组中的元素是一个ANFD的结构。ANFD是一个维护fd信息的结构体。其中，events记录了当前fd上感兴趣的事件的记录。head是watcher列表的头指针，这个列表就是在这个fd上注册的watcher列表。当fd的大小超出了anfds的容量，anfds会进行相应的扩展。anfds可以理解成一个简易的map，记录了fd与ANFD结构的映射关系。虽然，fd的申请不一定是连续的，可能会导致数组中出现空洞，但通过fd可以迅速获取到相应的watcher列表，这也许是用空间换取时间的一个考量吧。</p>
+
+<h2>ev_io的插入</h2>
+
+<p>从前面的介绍我们知道，要通过libev来监听fd上的事件，得要先插入一个ev_io到libev的loop中。ev_io的插入操作被封装在ev_io_start函数中。毫无疑问，libev首先会根据fd找到对应的watcher列表，并将新watcher加入到列表中。接下来，会调用fd_change函数，将fd加入到loop->fdchanges中。fdchanges是一个简单的数组，记录的是当前注册事件有发生改变的fd。到此为止，新ev_io的插入完成，上面的所有操作时间代价都是O(1)。fdchanges的作用在下一个小节中进行分析。</p>
+
+<h2>ev_io的选取</h2>
+
+<p>前面我们已经向libev的loop中插入了一个ev_io，那么libev是怎么把这个ev_io注册到底层io并响应底层的io事件的呢？ 要回答这个问题，我们得先回到<a href="blog/2012/10/09/libev-framwork/">上一篇文章</a>。从ev_run流程图中可以看到，ev_io的选取由fd_reify和backend_poll这两个步骤来完成。</p>
+
+<p>fd_reify函数的工作主要是遍历fdchanges，将对应列表的watcher的events字段合并到ANFD结构的events字段。ANFD上如果新的events与原来监听的events不一致，则表示在这个fd上监听的事件集发生了变化，需要将fd和事件集合通过backend_modify注册到底层的io库。</p>
+
+<p>在循环的后面，则会调用backend_poll来检查fd上是否有注册的事件发生。如果有事件发生，则通过fd_event函数，遍历fd对应的watcher列表，比较每个watcher上的events字段与发生的事件event值，找出就绪的watcher添加到pendings中。</p>
+
+<p>最后，这些pendings中的watcher会在循环结束前调用ev_invoke_pending来统一触发。</p>
+
+<h2>ev_io的移除</h2>
+
+<p>ev_io的移除由ev_io_stop来完成。首先，会先检查该watcher是否在pendings列表中，如果是，则先从pendings中删除该watcher。pendings是一个数组，libev中的数组一般是以数组和元素数量来维护的。删除数组中的一个元素，只要把数组末尾的元素替换掉被删除的元素，并把元素数量减一就可以了，操作的时间复杂度是O(1) 。</p>
+
+<p>接下来就是通过fd找到watcher列表，从中删除这个watcher。这个操作需要遍历列表找到待删除的watcher，所以平均时间复杂度是O(n)。其中n是注册在fd上的watcher数量，一般这个数量不会太大。</p>
+
+<p>然后是把watcher的active标志位复位，并减少全局active的watcher计数。</p>
+
+<p>最后是把fd加入到fdchanges中，因为移除一个watcher，可能会改变fd上感兴趣的事件，所以要在下一轮循环中重新计算该fd上的事件集合。</p>
+
+<h1>ev_timer</h1>
+
+<h2>ev_timer的管理</h2>
+
+<p>ev_timer watcher是主要负责处理超时事件的watcher。这类watcher被存储在loop->timers中，它们的特点是，超时时间小的watcher会被先触发。所以，timers其实是一个按触发时间升序排序的优先队列，底层的数据结构是一个用数组实现的二叉或四叉最小堆（关于堆的定义请google之）。ev_timer watcher的active字段，维护的其实是watcher在堆中的下标，通过它可以快速在堆中定位到watcher。</p>
+
+<p>堆相关基本的堆操作有upheap和downheap。upheap操作是将一个节点上移到堆中合适的位置；downheap操作则刚好相反，将一个节点下移到堆中合适的位置。最小堆的特点是父节点的值比子节点的值都要小。通过这两个操作，可以调整堆中节点的位置，以满足最小堆的约束。它们的时间复杂度都是O(log(n))。有了这两个操作，便可以构建出watcher结构的常用操作了。</p>
+
+<ul>
+<li><p>获取超时的watcher。因为timers是一个以触发时间排序的最小堆，根部的watcher总是最先要触发的watcher。所以这个操作的主要工作就是比较根部watcher的触发时间，如果可以触发，则加入pendings队列。然后检查该watcher是否是repeat的。如果是则更新下一次触发时间，调用downheap操作将这个节点下移至合适的位置；否则直接删除该watcher。</p></li>
+<li><p>添加新的watcher。这无非就是一个入堆的操作。将新watcher添加到timers数组的末尾，再执行upheap操作，上升至合适的位置即可。</p></li>
+<li><p>删除watcher。将堆尾节点替换掉待删除节点，再根据情况用upheap或downheap操作来调整替换后节点到合适的位置。</p></li>
+</ul>
+
+
+<p>以上这些操作的时间代价都是O(log(n))。</p>
+
+<h2>timer的使用策略</h2>
+
+<p>在实际应用中，可能会出现频繁使用大量timer的场景。比如：为每个请求设置一个超时时间，在指定时间内得不到响应，则报错。如果为每一个请求创建一个watcher，则将产生大量不必要的空间和计算开销。在libev的官方文档中，提供了一个比较高效的<a href="http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod#Be_smart_about_timeouts">方法</a>。下面简单介绍一下这种方法的思路。</p>
+
+<p>可以使用一个双向链表来维护超时时间相同的timer，这里的timer可以理解为定时器的记录结构，比如：超时时间和超时的回调函数等。因为大家的超时时间是一样的，所以新的timer进来后，肯定是添加到队尾的。</p>
+
+<p>然后分配一个ev_timer watcher专门来处理这个链表的超时工作。watcher的超时时间设置的是链表第一个元素的超时时间。当超时发生后，按链表顺序触发超时的timer。如果timer是重复的，可以重新计算超时时间并加入到链表尾部；否则直接删除timer记录即可。然后再从链表首部获取下一次超时时间，重复上面的流程。</p>
+
+<p>采用这种方案，只需要使用一个ev_timer watcher来处理相同timeout时间的timer。而timer的增删操作最后其实就是链表的插入和删除操作，所以操作的时间代价都是O(1)。而timeout时间相同的约束，主要是要保证链表里的元素都是有序的，插入操作都是发生在链表的尾端。如果要取消某一个timer，因为是双向链表，也可以在O(1)时间内从链表内移除掉指定的节点。</p>
+
+<h1>ev_prepare, ev_check, ev_idle</h1>
+
+<p>从角色上来看，这三个类型的watcher其实都是事件循环的一个扩展点。通过这三个watcher，开发者可以在事件循环的一些特殊时刻获得回调的机会。</p>
+
+<ul>
+<li><p>ev_prepare 在事件循环发生阻塞前会被触发。</p></li>
+<li><p>ev_check 在事件循环阻塞结束后会被触发。ev_check的触发是按优先级划分的。可以保证，ev_check是同一个优先级上阻塞结束后最先被触发的watcher。所以，如果要保证ev_check是最先被执行的，可以把它的优先级设成最高。</p></li>
+<li><p>ev_idle 当没有其他watcher被触发时被触发。ev_idle也是按优先级划分的。它的语义是，在当前优先级以及更高的优先级上没有watcher被触发，那么它就会被触发，无论之后在较低优先级上是否有其他watcher被触发。</p></li>
+</ul>
+
+
+<p>这三类watcher给外部的开发者提供了非常便利的扩展机制，在这个基础上，开发者可以做很多有意思的事情，也对事件循环有了更多的控制权。具体到底能做些什么，做到什么程度，那就要看开发者们的想象力和创造力了：）</p>
+
+<h1>总结</h1>
+
+<p>ev_io和ev_timer应该是libev中使用的最多的watcher了，也是比较典型的watcher。从底层的实现上来看，处理得恰到好处，精明而干练，可谓独具匠心。好了，拍作者马屁的话就少说了，这一轮libev的代码分析也到此先告一段落了，在这说说感受吧。</p>
+
+<p>看libev的代码，最大的障碍应该是非里面漫天飞舞的宏莫属了。但把握了libev的大概结构后，知道哪些家伙长得比较像宏（比如：一些看似全局的变量），知道哪些宏要到什么地方找定义（比如：ev_vars.h，ev_wrap.h），事情就变得简单了。再回头想想，宏也是个不错的选择。第一，它是一个不错的代码解耦手段。上层代码依赖于宏，而宏在不同的环境下可以绑定到不同的底层代码，切换底层的代码而不会影响到上层代码。第二，它也是提高性能的途径。宏的绑定在预处理阶段完成，不会有额外的动态查找和函数调用开销。第三，也可以偷偷懒，用短小的宏代替一大坨代码，写的人省力，看的人也舒服，正所谓他好我也好，一举多得～</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[libev源码分析 -- 整体设计]]></title>
+    <link href="http://blog.chang.net/blog/2012/10/09/libev-framework/"/>
+    <updated>2012-10-09T00:00:00+08:00</updated>
+    <id>http://blog.chang.net/blog/2012/10/09/libev-framework</id>
+    <content type="html"><![CDATA[<p><a href="http://software.schmorp.de/pkg/libev.html">libev</a>是Marc Lehmann用C写的高性能事件循环库。通过libev，可以灵活地把各种事件组织管理起来，如：时钟、io、信号等。libev在业界内也是广受好评，不少项目都采用它来做底层的事件循环。node.js也是其中之一。 学习和分析libev库，有助于理解node.js底层的工作原理，同时也可以学习和借鉴libev的设计思想。本文是最近在学习libev源码的一些心得总结吧。</p>
+
+<!-- more -->
+
+
+<h1>libev示例</h1>
+
+<p>先上一个例子，看看libev是怎么使用的吧。</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="c1">// a single header file is required</span>
+</span><span class='line'><span class="cp">#include &lt;ev.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="cp">#include &lt;stdio.h&gt; </span><span class="c1">// for puts</span>
+</span><span class='line'>
+</span><span class='line'><span class="c1">// every watcher type has its own typedef&#39;d struct</span>
+</span><span class='line'><span class="c1">// with the name ev_TYPE</span>
+</span><span class='line'><span class="n">ev_io</span> <span class="n">stdin_watcher</span><span class="p">;</span>
+</span><span class='line'><span class="n">ev_timer</span> <span class="n">timeout_watcher</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="c1">// all watcher callbacks have a similar signature</span>
+</span><span class='line'><span class="c1">// this callback is called when data is readable on stdin</span>
+</span><span class='line'><span class="k">static</span> <span class="kt">void</span>
+</span><span class='line'><span class="nf">stdin_cb</span> <span class="p">(</span><span class="n">EV_P_</span> <span class="n">ev_io</span> <span class="o">*</span><span class="n">w</span><span class="p">,</span> <span class="kt">int</span> <span class="n">revents</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="n">puts</span> <span class="p">(</span><span class="s">&quot;stdin ready&quot;</span><span class="p">);</span>
+</span><span class='line'>  <span class="c1">// for one-shot events, one must manually stop the watcher</span>
+</span><span class='line'>  <span class="c1">// with its corresponding stop function.</span>
+</span><span class='line'>  <span class="n">ev_io_stop</span> <span class="p">(</span><span class="n">EV_A_</span> <span class="n">w</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// this causes all nested ev_run&#39;s to stop iterating</span>
+</span><span class='line'>  <span class="n">ev_break</span> <span class="p">(</span><span class="n">EV_A_</span> <span class="n">EVBREAK_ALL</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="c1">// another callback, this time for a time-out</span>
+</span><span class='line'><span class="k">static</span> <span class="kt">void</span>
+</span><span class='line'><span class="nf">timeout_cb</span> <span class="p">(</span><span class="n">EV_P_</span> <span class="n">ev_timer</span> <span class="o">*</span><span class="n">w</span><span class="p">,</span> <span class="kt">int</span> <span class="n">revents</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="n">puts</span> <span class="p">(</span><span class="s">&quot;timeout&quot;</span><span class="p">);</span>
+</span><span class='line'>  <span class="c1">// this causes the innermost ev_run to stop iterating</span>
+</span><span class='line'>  <span class="n">ev_break</span> <span class="p">(</span><span class="n">EV_A_</span> <span class="n">EVBREAK_ONE</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span>
+</span><span class='line'><span class="nf">main</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="c1">// use the default event loop unless you have special needs</span>
+</span><span class='line'>  <span class="k">struct</span> <span class="n">ev_loop</span> <span class="o">*</span><span class="n">loop</span> <span class="o">=</span> <span class="n">EV_DEFAULT</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// initialise an io watcher, then start it</span>
+</span><span class='line'>  <span class="c1">// this one will watch for stdin to become readable</span>
+</span><span class='line'>  <span class="n">ev_io_init</span> <span class="p">(</span><span class="o">&amp;</span><span class="n">stdin_watcher</span><span class="p">,</span> <span class="n">stdin_cb</span><span class="p">,</span> <span class="cm">/*STDIN_FILENO*/</span> <span class="mi">0</span><span class="p">,</span> <span class="n">EV_READ</span><span class="p">);</span>
+</span><span class='line'>  <span class="n">ev_io_start</span> <span class="p">(</span><span class="n">loop</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">stdin_watcher</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// initialise a timer watcher, then start it</span>
+</span><span class='line'>  <span class="c1">// simple non-repeating 5.5 second timeout</span>
+</span><span class='line'>  <span class="n">ev_timer_init</span> <span class="p">(</span><span class="o">&amp;</span><span class="n">timeout_watcher</span><span class="p">,</span> <span class="n">timeout_cb</span><span class="p">,</span> <span class="mf">5.5</span><span class="p">,</span> <span class="mf">0.</span><span class="p">);</span>
+</span><span class='line'>  <span class="n">ev_timer_start</span> <span class="p">(</span><span class="n">loop</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">timeout_watcher</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// now wait for events to arrive</span>
+</span><span class='line'>  <span class="n">ev_run</span> <span class="p">(</span><span class="n">loop</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// break was called, so exit</span>
+</span><span class='line'>  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>这是libev官网文档的例子，其中libev的使用步骤还是比较清晰的。从main开始入手，可以发现代码中主要做了这么几件事情：</p>
+
+<ul>
+<li><p>获取ev_loop实例。ev_loop，从名字上可以看出，它代表了一个事件循环，也是我们后面代码的主要组织者。</p></li>
+<li><p>创建和初始化watcher。libev中定义了一系列的watcher，每类watcher负责一类特定的事件。一般可以通过ev_TYPE_init函数来创建一个watcher实例（TYPE是某一种watcher类型，如：io, timer等）。例子中分别创建了io和timer两个watcher，并绑定了相应的回调函数。当感兴趣的事件发生后，对应的回调函数将会被调用。</p></li>
+<li><p>将watcher注册到ev_loop中。一般可以通过ev_TYPE_start函数来完成。注册成功后，watcher便和loop关联起来了，当loop中检测到感兴趣的事件发生，便会通知相关的watcher。</p></li>
+<li><p>启动事件循环。 即后面的ev_run函数。事件循环启动后，当前线程/进程将会被阻塞，直到循环被终止。</p></li>
+</ul>
+
+
+<p>在上面的例子中，在两个回调函数中的ev_break函数就是终止循环的地方。当5.5秒超时或是标准输入有输入事件，则会进入到相应的回调函数，然后会终止事件循环，退出程序。</p>
+
+<h1>libev工作原理</h1>
+
+<p>总的来看，libev其实是实现了<a href="http://delivery.acm.org/10.1145/230000/226255/p65-schmidt.pdf?ip=112.10.101.170&amp;acc=ACTIVE%20SERVICE&amp;CFID=175798313&amp;CFTOKEN=73864269&amp;__acm__=1350399757_644772085f9a19ff9d2fdb35159272bf">Reactor模式</a>。当中主要包含了这么几个角色：watcher， ev_loop和ev_run。</p>
+
+<h2>watcher</h2>
+
+<p>watcher是Reactor中的Event Handler。一方面，它向事件循环提供了统一的调用接口（按类型区分）;另一方面，它是外部代码的注入口，维护着具体的watcher信息，如：绑定的回调函数，watcher的优先级，是否激活等。</p>
+
+<p>在ev.h中我们可以看到各种watcher的定义，如：ev_io, ev_timer等。其中，watcher的公共属性定义如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cm">/* shared by all watchers */</span>
+</span><span class='line'><span class="cp">#define EV_WATCHER(type)         \</span>
+</span><span class='line'><span class="cp"> int active; </span><span class="cm">/* private */</span><span class="cp">           \</span>
+</span><span class='line'><span class="cp"> int pending; </span><span class="cm">/* private */</span><span class="cp">          \</span>
+</span><span class='line'><span class="cp"> EV_DECL_PRIORITY </span><span class="cm">/* private  int priority; */</span><span class="cp">       \</span>
+</span><span class='line'><span class="cp"> EV_COMMON </span><span class="cm">/* rw  void *data; */</span><span class="cp">             \</span>
+</span><span class='line'><span class="cp"> EV_CB_DECLARE (type) </span><span class="cm">/* private */</span><span class="cp"></span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>其中的宏定义如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp"># define EV_DECL_PRIORITY int priority;</span>
+</span><span class='line'><span class="cp"># define EV_COMMON void *data;</span>
+</span><span class='line'><span class="cp"># define EV_CB_DECLARE(type) void (*cb)(EV_P_ struct type *w, int revents);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<ul>
+<li><p>active: 表示当前watcher是否被激活。ev_TYPE_start调用后置位，ev_TYPE_stop调用后复位；</p></li>
+<li><p>pending: 表示当前watcher有事件就绪，等待处理。pending的值其实就是当前watcher在pendings队列中的下标；</p></li>
+<li><p>priority: 是当前watcher的优先级；</p></li>
+<li><p>data: 附加数据指针，用来在watcher中携带额外所需的数据；</p></li>
+<li><p>cb：是事件触发后的回调函数定义。</p></li>
+</ul>
+
+
+<p>具体的watcher再在此基础上添加额外的属性。
+开发者可以根据需要，选择特定类型的watcher，创建实例并进行初始化，然后将实例注册到loop中即可。libev中定义了<a href="http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod#WATCHER_TYPES">若干种类型的watcher</a>，每类watcher负责解决某一特定领域的问题（如：io, timer, signal等），可以在ev.h中看到这些watcher的定义。</p>
+
+<h2>ev_loop</h2>
+
+<p>ev_loop则是一个Reactor的角色，是事件循环的上下文环境，就像一根竹签，把前面的watcher实例像糖葫芦一样串起来。</p>
+
+<h3>ev_loop的定义</h3>
+
+<p>ev_loop的定义在ev.c中，具体如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="k">struct</span> <span class="n">ev_loop</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="n">ev_tstamp</span> <span class="n">ev_rt_now</span><span class="p">;</span>
+</span><span class='line'>  <span class="cp">#define ev_rt_now ((loop)-&gt;ev_rt_now)</span>
+</span><span class='line'>  <span class="cp">#define VAR(name,decl) decl;</span>
+</span><span class='line'>      <span class="cp">#include &quot;ev_vars.h&quot;</span>
+</span><span class='line'>  <span class="cp">#undef VAR</span>
+</span><span class='line'><span class="p">};</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>ev_vars.h中定义了ev_loop的各种属性。在ev_wrap.h中则定义了与loop相关的各种宏，代码中大多都是以宏的形式进行操作。</p>
+
+<h3>watcher的管理</h3>
+
+<p>在ev_loop中，watcher按各自的类型进行分类存储。如：io的loop->anfds，timer的loop->timers。ev_TYPE_start在激活watcher后，便将它加入到相应的存储结构中（具体的实现在后面介绍watcher的文章再分析）。</p>
+
+<p>在事件循环中，有事件就绪的watcher会被挑拣出来，保存到ev_loop中。这些就绪的watcher主要由loop->pendings和loop->pendingcnt来维护（如下图所示）。这两个东西都是二维数组，第一维都是优先级。pendings中存的是ANPENDING实例，后者的做要作用就是维护就绪的watcher指针; 而pendingcnt中存的则是对应优先级上的pendings元素的数量。在每个就绪的watcher上也会有一个pending字段记录它在pendings列表中的下标，这样就可以通过watcher很方便的找到它在pendings列表中的位置了，这对删除操作很有帮助。</p>
+
+<p>在一轮事件循环结束后，则会根据优先级，依次触发就绪的watcher。</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/f9/d3/73/334a86e7c2d386ed8c3e3174f3a543a3.png" alt="pendings结构图"/>
+</center>
+
+
+<h2>bool ev_run(loop, flag)</h2>
+
+<p>ev_run函数是执行事件循环的引擎，即Reactor模式中的select方法。通过向ev_run函数传递一个ev_loop实例，便可以开启一个事件循环。ev_run实际上是一个巨大的do-while循环，期间会检查loop中注册的各种watcher的事件。如果有事件就绪，则触发相应的watcher。这个循环会一直持续到ev_break被调用或者无active的watcher为止。当然，也可以通过传递EVRUN_NOWAIT或EVRUN_ONCE等flag来控制循环的阻塞行为。</p>
+
+<p>ev_run的工作内容，在<a href="http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod#FUNCTIONS_CONTROLLING_EVENT_LOOPS">官方文档的API</a>中有详细说明，通过文档有助于对ev_run的理解。具体的代码有点长，在这里就不贴了，感兴趣的同学可以在ev.c中查看ev_run的实现代码。剔除掉条件检查和一些无关紧要的代码，主要的流程如下图所示。</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/4f/7f/ea/36f77813a07b89788a1ede622c3d34f9.png" alt="ev_run流程图"/>
+</center>
+
+
+<p>可以看到，ev_run的主要工作就是按watcher的分类，先后检查各种类型的watcher上的事件，通过ev_feed_event函数将就绪的watcher加入到pending的数据结构中。最后调用ev_invoke_pending，触发pending中的watcher。完了以后会检查，是否还有active的watcher以及是否有ev_break调用过，然后决定是否要继续下一轮循环。</p>
+
+<h1>总结</h1>
+
+<p>总的来看，libev的结构设计还是非常清晰。如果说，主循环ev_run是libev这棵大树的主干，那么功能强大，数量繁多的watcher就是这棵大树的树叶，而循环上下文ev_loop则是连接主干和树叶的树枝，它们的分工与职责是相当明确的。作为大树的主干，ev_run的代码是非常稳定和干净的，基本上不会掺杂外部开发者的逻辑代码进来。作为叶子的watcher，它的定位也非常明确：专注于自己的领域，只解决某一个类型的问题。不同的watcher以及watcher和主循环之间并没有太多的干扰和耦合，这也是libev能如此灵活扩展的原因。而中间的树枝ev_loop的作用也是不言而喻的，正式因为它在中间的调和，前面两位哥们才能活得这么有个性。</p>
+
+<p>看到这里，libev的主体架构已经比较清楚了，但是似乎还没看到与性能相关的关键代码。与主干代码不一样，这些代码更多的是隐藏在实现具体逻辑的地方，也就是watcher之中的。虽然watcher的使用接口都比较相似，但是不同的watcher，底层的数据结构和处理策略还是不一样的。下面一篇文章我们就来探索一下libev中比较常用的几种watcher的设计与实现。</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[从wordpress到octopress]]></title>
+    <link href="http://blog.chang.net/blog/2012/10/08/from-wordpress-to-octopress/"/>
+    <updated>2012-10-08T00:28:00+08:00</updated>
+    <id>http://blog.chang.net/blog/2012/10/08/from-wordpress-to-octopress</id>
+    <content type="html"><![CDATA[<h1>前记</h1>
+
+<p>兜兜转转，终于还是受不了wordpress的繁杂控制后台和二逼编辑器了，下定决心搬到octopress来了。相比wp，op更加清爽，更容易支配，更符合我的口味吧。比较喜欢op的组织结构，每篇文章都是一个文本文件，支持markdown格式，方便编辑和控制，好过面对冷冰冰的数据库。于是有了这个折腾之旅。</p>
+
+<!-- more -->
+
+
+<h1>octopress安装</h1>
+
+<p>octopress官网的文档写的够仔细了，照着倒腾很快就能让博客跑起来了，基本没什么问题。我是在本机搭的博客，采用的是ssh + Rsync。要发布出去的话，可以考虑github。</p>
+
+<h1>文章迁移</h1>
+
+<p>搬窝首先要考虑的是以前的家当怎么处理。虽然说开博至今没憋出什么像样的文章，但终究是自己业余时间的一点心血，能搬就搬过来吧。而且，像我这样从wp折腾到op的人应该也不少，靠谱的方案应该也不少。</p>
+
+<p>果不其然，google了一把，发现了不少成功案例。我采用的是<a href="http://blog.yorkxin.org/2011/11/26/import-from-wpcom-to-octopress/">yorkxin</a>同学的方案，迁移脚本的代码在<a href="https://gist.github.com/1394128">这里</a>。下面是主要的操作流程：</p>
+
+<ul>
+<li>首先先从wp的控制后台导出wp的备份文件，保存为wordpress.xml，放到op的根目录下。</li>
+<li>将上面gist里的脚本保存到op项目下的_import/wordpressdotcom.rb文件中。</li>
+<li>在op根目录下执行</li>
+</ul>
+
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>ruby -r "./_import/wordpressdotcom.rb" -e "Jekyll::WordpressDotCom.process"</span></code></pre></td></tr></table></div></figure>
+
+
+<p>这样就完成文章的迁移啦。</p>
+
+<p>转移后有的地方格式还是不大对的，先把前面几篇文章放上来吧，后面的慢慢调好了以后再说～</p>
+
+<h1>加入评论</h1>
+
+<p>op中没有自带评论功能，如果需要可以通过<a href="http://disqus.com/">DISQUS</a>来提供。过程也很简单。</p>
+
+<p>首先注册一个DISQUS帐号。剩下的就交给op吧，因为op本来就支持DISQUS。
+在_config.yml配置文件找到disqus的配置，填上你的disqus_short_name，再重新生成一下博客文章，发布，然后就可以看到你的文章后面加入了非常漂亮的评论模块啦，是不是很简单呢。</p>
+
+<h1>加入图片</h1>
+
+<p>op也没有上传图片的功能。这个也可以寻找一个第三方的图片服务就解决了。以前的博客图片大多是在本机上的，如果要放到网上，还得慢慢倒腾。</p>
+
+<h1>美化</h1>
+
+<p>op的样式感觉比以前wp上的要大气许多，现在还没来得及好好倒腾，后面再一步步把把小博美化美化吧。以后迁到github上也很方便，op本身就是一个git管理的工程～:)</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[connect源码分析--基础架构]]></title>
+    <link href="http://blog.chang.net/blog/2012/05/18/connect-framework/"/>
+    <updated>2012-05-18T00:00:00+08:00</updated>
+    <id>http://blog.chang.net/blog/2012/05/18/connect-framework</id>
+    <content type="html"><![CDATA[<p>connect是TJ tx给node.js社区贡献的一个热门的web基础框架。TJ的另一力作express框架便是在它基础之上构建的。与express不同，connect更加短小精悍，是一个偏向基础设施的框架。</p>
+
+<p>正如名字所表达的一样，connect框架做的事情很简单，就是把一系列的组件连接到一起，然后让http的请求依次流过这些组件。这些被connect串联起来的组件被称为中间件（middlewire）。在connect中，http请求的处理流程被划分成一个个小片段，每一个小片段代表一项处理任务（如：请求body的解析，session的维护等），由一个中间件负责，前后片段之间靠request，response等对象传递中间数据。connect框架对这些处理细节并不关心，只知道将请求从一个中间件导向下一个中间件。connect的核心代码非常精简，加上注释，也就只有寥寥200来行代码。本文参考的connect版本为2.2.2（这个版本号好像有点特别-_-b）。</p>
+
+<!--more-->
+
+
+<p>先上个connect官网提供的一个Hello world例子吧：）</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'>  <span class="kd">var</span> <span class="nx">connect</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">&#39;connect&#39;</span><span class="p">)</span>
+</span><span class='line'>  <span class="p">,</span> <span class="nx">http</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">&#39;http&#39;</span><span class="p">);</span>
+</span><span class='line'>  <span class="kd">var</span> <span class="nx">app</span> <span class="o">=</span> <span class="nx">connect</span><span class="p">()</span>
+</span><span class='line'>  <span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="nx">connect</span><span class="p">.</span><span class="nx">favicon</span><span class="p">())</span>
+</span><span class='line'>  <span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="nx">connect</span><span class="p">.</span><span class="nx">logger</span><span class="p">(</span><span class="s1">&#39;dev&#39;</span><span class="p">))</span>
+</span><span class='line'>  <span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="nx">connect</span><span class="p">.</span><span class="kr">static</span><span class="p">(</span><span class="s1">&#39;public&#39;</span><span class="p">))</span>
+</span><span class='line'>  <span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="nx">connect</span><span class="p">.</span><span class="nx">directory</span><span class="p">(</span><span class="s1">&#39;public&#39;</span><span class="p">))</span>
+</span><span class='line'>  <span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="nx">connect</span><span class="p">.</span><span class="nx">cookieParser</span><span class="p">(</span><span class="s1">&#39;my secret here&#39;</span><span class="p">))</span>
+</span><span class='line'>  <span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="nx">connect</span><span class="p">.</span><span class="nx">session</span><span class="p">())</span>
+</span><span class='line'>  <span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">res</span><span class="p">){</span>
+</span><span class='line'>    <span class="nx">res</span><span class="p">.</span><span class="nx">end</span><span class="p">(</span><span class="s1">&#39;Hello from Connect!\n&#39;</span><span class="p">);</span>
+</span><span class='line'>  <span class="p">});</span>
+</span><span class='line'>  <span class="nx">http</span><span class="p">.</span><span class="nx">createServer</span><span class="p">(</span><span class="nx">app</span><span class="p">).</span><span class="nx">listen</span><span class="p">(</span><span class="mi">3000</span><span class="p">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>很简单，很清晰的一个链式调用代码。风格与express的很像，不，应该是说express的风格跟它很像，总得有个先来后到，是吧。那么下面开始对connect的核心代码进行解析吧～</p>
+
+<h2>入口代码</h2>
+
+<p>connect的入口代码在lib/connect.js中，代码不多，主要定义了createServer函数。该函数最终被赋给module.exports，当成connect模块暴露出去，即对应于例子中的connect()函数。createServer的具体代码如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'>  <span class="kd">function</span> <span class="nx">createServer</span><span class="p">()</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kd">function</span> <span class="nx">app</span><span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">res</span><span class="p">){</span> <span class="nx">app</span><span class="p">.</span><span class="nx">handle</span><span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">res</span><span class="p">);</span> <span class="p">}</span>
+</span><span class='line'>    <span class="nx">utils</span><span class="p">.</span><span class="nx">merge</span><span class="p">(</span><span class="nx">app</span><span class="p">,</span> <span class="nx">proto</span><span class="p">);</span>
+</span><span class='line'>    <span class="nx">utils</span><span class="p">.</span><span class="nx">merge</span><span class="p">(</span><span class="nx">app</span><span class="p">,</span> <span class="nx">EventEmitter</span><span class="p">.</span><span class="nx">prototype</span><span class="p">);</span>
+</span><span class='line'>    <span class="nx">app</span><span class="p">.</span><span class="nx">route</span> <span class="o">=</span> <span class="s1">&#39;/&#39;</span><span class="p">;</span>
+</span><span class='line'>    <span class="nx">app</span><span class="p">.</span><span class="nx">stack</span> <span class="o">=</span> <span class="p">[];</span>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="kd">var</span> <span class="nx">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="o">&amp;</span><span class="nx">lt</span><span class="p">;</span> <span class="nx">arguments</span><span class="p">.</span><span class="nx">length</span><span class="p">;</span> <span class="o">++</span><span class="nx">i</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>      <span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="nx">arguments</span><span class="p">[</span><span class="nx">i</span><span class="p">]);</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="k">return</span> <span class="nx">app</span><span class="p">;</span>
+</span><span class='line'>  <span class="p">};</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>这个方法里主要定义了一个名字叫app的函数，然后通过utils.merge方法，把proto（由lib/proto.js定义，后面会介绍）和EventEmitter的方法merge到了app函数上。在js中，function也是对象，这就相当与给app对象添加了proto和EventEmitter的特性。这个方式，有点像松本tx提到的Ruby中的mixin，是实现多继承的一种途径。与mixin所不同的是，这里的merge会把后面merge进来的属性覆盖掉原来已有的同名属性。</p>
+
+<p>merge的结果，让我们拥有了一个继承了proto和EventEmitter的function对象，像app.handle, app.use等这些方法，其实都是从proto处继承而来的。这个function的函数体很简单，就是调用自己的handle方法来处理http请求。随后，这个function会被当作回调函数传递给node.js原生http模块的createServer方法，成为http请求处理的源头。</p>
+
+<p>这里有个地方需要注意的，createServer函数返回的是一个叫app的function，期间并没有用new关键字，所以它不是由app作为构造函数而构建出来的一个纯粹的js对象，它依然还是一个function，所以它可以作为回调函数传递给http.createServer方法。</p>
+
+<p>此外，createServer可以接受任意数量的中间件对象作为参数，在函数的最后会逐一加载这些传递进来的中间件。</p>
+
+<p>lib/connect.js文件的最后，会遍历lib/middleware目录下的connect自带的中间件模块，并将这些模块挂到app和app.middleware之下，于是就有了例子里的connect.favicon, connect.logger等。</p>
+
+<h2>中间件加载</h2>
+
+<p>connect的最大灵活性就在于它的中间件机制。connect的中间件加载代码定义在lib/proto.js中的app.use方法。use方法的定义如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'>  <span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="nx">route</span><span class="p">,</span> <span class="nx">fn</span><span class="p">)</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>route是中间件所使用的请求url的pattern，默认为&#8217;/&#8217;。connect会按照加载顺序，逐一执行pattern与请求url匹配的中间件处理函数。第二个参数fn即中间件处理函数，有两种定义形式。</p>
+
+<p>第一种形式为：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'>  <span class="kd">function</span><span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">resp</span><span class="p">,</span> <span class="nx">next</span><span class="p">)</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>第二种形式为：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'>  <span class="kd">function</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">req</span><span class="p">,</span> <span class="nx">resp</span><span class="p">,</span> <span class="nx">next</span><span class="p">)</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>第一种是正常的处理函数，第二种是异常处理函数。</p>
+
+<p>req, resp为http模块的request和response对象。next是触发后续流程的回调函数，带一个err参数。通过传递给next传递一个err参数，告诉框架当前中间件处理出现异常。如果err为空，则会按顺序执行后面正常处理函数，忽略异常处理函数;相反，如果err非空，则会按顺序执行后续的异常处理函数，而忽略正常处理函数。</p>
+
+<p>在connect中，请求的处理流程是一个异步的过程，fn函数的返回并不代表处理流程的结束，所以在这里需要用next回调的形式通知框架执行后续的流程。但如果某一个中间件函数认为请求的流程到它那里已经处理完毕，无需再执行后面的流程，则可以直接返回，而不用再调用next回调函数了（包括正常和异常处理函数）。如果请求遍历完中间件列表后仍在调用next函数，connect则会认为这个请求没有中间件认领。这时，如果next的err参数非空，则会给页面返回500错误，表示server出现了内部错误;如果err为空，则返回404错误，即访问的资源不存在。</p>
+
+<p>依照中间件函数的定义，我们也可以编写自己的中间件函数，然后通过use方法加入到connect的处理流程中。</p>
+
+<p>在这里，我们也可以看出来，各个middleware之间其实并没有直接的依赖。request和response就成为它们在connect中传递信息的唯一桥梁。前面的中间件处理完毕后，把结果附到request或response之上，后面的中间件便可以从中获取到这些数据。所以，中间件的加载顺序在connect中就显得格外重要，必须将被依赖的中间件放在依赖它的模块之前。比如说，解析cookie的中间件应该放在处理session的中间件之前，因为一般session id是通过cookie来传递的。</p>
+
+<h2>处理流程</h2>
+
+<p>经过use之后，我们就拥有了一个中间件和pattern的列表，接下来就是怎么让http请求流经这个列表了。</p>
+
+<p>前面也提到过，http请求的处理源头就是app.handler方法。这个方法也比较简单，主要定义了一个next的函数，也就是上一节提到的next回调函数。next的调用其实是一个尾递归过程。每一次调用next，都会从列表中取出一个中间件，进行pattern匹配检查。这里的pattern匹配，其实是简单的startWith检查。也就是说，请求的url是以pattern开头，并且紧接着下一个字符是/或.的话，才认为是pattern匹配上了，然后才会将请求流入当前这个中间件的处理函数中。pattern匹配的代码如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'>  <span class="nx">path</span> <span class="o">=</span> <span class="nx">utils</span><span class="p">.</span><span class="nx">parseUrl</span><span class="p">(</span><span class="nx">req</span><span class="p">).</span><span class="nx">pathname</span><span class="p">;</span>
+</span><span class='line'>  <span class="k">if</span> <span class="p">(</span><span class="kc">undefined</span> <span class="o">==</span> <span class="nx">path</span><span class="p">)</span> <span class="nx">path</span> <span class="o">=</span> <span class="s1">&#39;/&#39;</span><span class="p">;</span>
+</span><span class='line'>  <span class="c1">// skip this layer if the route doesn&#39;t match.</span>
+</span><span class='line'>  <span class="k">if</span> <span class="p">(</span><span class="mi">0</span> <span class="o">!=</span> <span class="nx">path</span><span class="p">.</span><span class="nx">indexOf</span><span class="p">(</span><span class="nx">layer</span><span class="p">.</span><span class="nx">route</span><span class="p">))</span> <span class="k">return</span> <span class="nx">next</span><span class="p">(</span><span class="nx">err</span><span class="p">);</span>
+</span><span class='line'>  <span class="nx">c</span> <span class="o">=</span> <span class="nx">path</span><span class="p">[</span><span class="nx">layer</span><span class="p">.</span><span class="nx">route</span><span class="p">.</span><span class="nx">length</span><span class="p">];</span>
+</span><span class='line'>  <span class="k">if</span> <span class="p">(</span><span class="nx">c</span> <span class="o">&amp;&amp;</span> <span class="s1">&#39;/&#39;</span> <span class="o">!=</span> <span class="nx">c</span> <span class="o">&amp;&amp;</span> <span class="s1">&#39;.&#39;</span> <span class="o">!=</span> <span class="nx">c</span><span class="p">)</span> <span class="k">return</span> <span class="nx">next</span><span class="p">(</span><span class="nx">err</span><span class="p">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>其中，layter是保存中间件信息的数据结构，结构为：{route: route, handle: fn}。</p>
+
+<p>在handler方法中，我们也可以看到，上一节提到的两类中间件函数的处理判断，代码如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'>  <span class="kd">var</span> <span class="nx">arity</span> <span class="o">=</span> <span class="nx">layer</span><span class="p">.</span><span class="nx">handle</span><span class="p">.</span><span class="nx">length</span><span class="p">;</span>
+</span><span class='line'>  <span class="k">if</span> <span class="p">(</span><span class="nx">err</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="nx">arity</span> <span class="o">===</span> <span class="mi">4</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>      <span class="nx">layer</span><span class="p">.</span><span class="nx">handle</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">req</span><span class="p">,</span> <span class="nx">res</span><span class="p">,</span> <span class="nx">next</span><span class="p">);</span>
+</span><span class='line'>    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+</span><span class='line'>      <span class="nx">next</span><span class="p">(</span><span class="nx">err</span><span class="p">);</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>  <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="nx">arity</span> <span class="o">&amp;</span><span class="nx">lt</span><span class="p">;</span> <span class="mi">4</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="nx">layer</span><span class="p">.</span><span class="nx">handle</span><span class="p">(</span><span class="nx">req</span><span class="p">,</span> <span class="nx">res</span><span class="p">,</span> <span class="nx">next</span><span class="p">);</span>
+</span><span class='line'>  <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+</span><span class='line'>    <span class="nx">next</span><span class="p">();</span>
+</span><span class='line'>  <span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>可以看出来，connect是根据中间件处理函数的参数列表长度来区分中间件种类的。</p>
+
+<h2>总结</h2>
+
+<h3>设计模式</h3>
+
+<p>总的来看，connect其实是典型的chain of responsibility模式的实现。各个中间件就是责任链上的一个节点，route pattern就是决定中间件是否参与请求处理的判断条件。链只知道请求的传递，而中间件只知道自己的处理逻辑，这样对象之间的耦合是非常松散的，任务的指派过程也是相当灵活的。第三方按照中间件的接口约定即可开发自己的中间件并加入到connect中，同时还可以调整链的构建顺序来控制请求处理的流程。但由于http处理流程的一些特殊性，有的中间件之间也存在有一些隐含的依赖关系（如前面提到的cookie和session），所以connect对中间件的加载顺序也有着一定的要求。</p>
+
+<h3>filter</h3>
+
+<p>由于connect采用的是链式的结构，所以我们可以很方便地实现filter机制，将业务逻辑放在一个中间件中，而一些前期准备工作和后期的清理工作放到另外的中间件中，使得代码模块更加清晰，更容易复用。但正如前面所提到的，connect中，中间件之间是以异步的形式来进行衔接的，中间件函数的返回并不代表处理的结束，而需要通过next回调函数来执行后续流程。所以，connect中可以分别提供before和after的filter，但无法提供类似Java中的around风格的filter。这对于一些在after filter中需要访问before filter中上下文信息的情况来说并不是很方便。</p>
+
+<h3>八卦</h3>
+
+<p>按照TJ tx的最初构想，connect应该只是一个基本的工具框架，供其他上层的框架（如：express）所使用，而一般情况下不应该直接使用connect。但connect是如此的好用，以至于很多人直接就把connect用到自己的应用之中了，这也许并不是TJ的本意。从前面的分析里也可以看到，connect的url匹配规则其实是很简单的，而具体的url匹配，请求处理工作是由router中间件负责的。熟悉connect的tx应该也有这种感觉，router绝对是当中重量级的一个中间件。但从TJ对connect和express的布局上来看，这个中间件似乎应该更靠近express一些。所以，TJ tx最终做了一个艰难的决定，把router从connect迁移到了express里。具体的讨论可以到<a href="https://github.com/senchalabs/connect/issues/262">这里</a>围观。</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Mina工作原理分析]]></title>
+    <link href="http://blog.chang.net/blog/2012/04/15/mina-architecture/"/>
+    <updated>2012-04-15T00:00:00+08:00</updated>
+    <id>http://blog.chang.net/blog/2012/04/15/mina-architecture</id>
+    <content type="html"><![CDATA[<p>Mina是Apache社区维护的一个开源的高性能IO框架，在业界内久经考验，广为使用。Mina与后来兴起的高性能IO新贵Netty一样，都是韩国人Trustin Lee的大作，二者的设计理念是极为相似的。在作为一个强大的开发工具的同时，这两个框架的优雅设计和不俗的表现，有很多地方是值得学习和借鉴的。本文将从Mina工作原理的角度出发，对其结构进行分析。</p>
+
+<!--more-->
+
+
+<h1>总体结构</h1>
+
+<p>Mina的底层依赖的主要是Java NIO库，上层提供的是基于事件的异步接口。其整体的结构如下：</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/ed/3e/5a/8010243e759a9099b2839dc501fb76a8.png" alt="mina-flow" title="mina-flow" width="854" height="600" />
+</center>
+
+
+<h2>IoService</h2>
+
+<p>最底层的是IOService，负责具体的IO相关工作。这一层的典型代表有IOSocketAcceptor和IOSocketChannel，分别对应TCP协议下的服务端和客户端的IOService。IOService的意义在于隐藏底层IO的细节，对上提供统一的基于事件的异步IO接口。每当有数据到达时，IOService会先调用底层IO接口读取数据，封装成IoBuffer，之后以事件的形式通知上层代码，从而将Java NIO的同步IO接口转化成了异步IO。所以从图上看，进来的low-level IO经过IOService层后变成IO Event。</p>
+
+<p>具体的代码可以参考org.apache.mina.core.polling.AbstractPollingIoProcessor的私有内部类Processor。</p>
+
+<h2>IoFilterChain</h2>
+
+<p>Mina的设计理念之一就是业务代码和数据包处理代码分离，业务代码只专注于业务逻辑，其他的逻辑如：数据包的解析，封装，过滤等则交由IoFilterChain来处理。IoFilterChain可以看成是Mina处理流程的扩展点。这样的划分使得结构更加清晰，代码分工更明确。开发者通过往Chain中添加IoFilter，来增强处理流程，而不会影响后面的业务逻辑代码。</p>
+
+<h2>oHandler</h2>
+
+<p>IoHandler是实现业务逻辑的地方，需要有开发者自己来实现这个接口。IoHandler可以看成是Mina处理流程的终点，每个IoService都需要指定一个IoHandler。</p>
+
+<h2>IoSession</h2>
+
+<p>IoSession是对底层连接的封装，一个IoSession对应于一个底层的IO连接（在Mina中UDP也被抽象成了连接）。通过IoSession，可以获取当前连接相关的上下文信息，以及向远程peer发送数据。发送数据其实也是个异步的过程。发送的操作首先会逆向穿过IoFilterChain，到达IoService。但IoService上并不会直接调用底层IO接口来将数据发送出去，而是会将该次调用封装成一个WriteRequest，放入session的writeRequestQueue中，最后由IoProcessor线程统一调度flush出去。所以发送操作并不会引起上层调用线程的阻塞。</p>
+
+<p>具体代码可以参考org.apache.mina.core.filterchain.DefaultIoFilterChain的内部类HeadFilter的filterWrite方法。</p>
+
+<p>最后附上一个简单的echo server例子来作为本节结束吧。</p>
+
+<p>EchoServer.java</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="kd">public</span> <span class="kd">class</span> <span class="nc">EchoServer</span> <span class="o">{</span>
+</span><span class='line'>  <span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="n">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">PORT</span> <span class="o">=</span> <span class="mi">3333</span><span class="o">;</span>
+</span><span class='line'>    <span class="n">NioSocketAcceptor</span> <span class="n">acceptor</span> <span class="o">=</span> <span class="k">new</span> <span class="n">NioSocketAcceptor</span><span class="o">();</span>
+</span><span class='line'>    <span class="n">acceptor</span><span class="o">.</span><span class="na">setHandler</span><span class="o">(</span><span class="k">new</span> <span class="n">EchoHandler</span><span class="o">());</span>
+</span><span class='line'>    <span class="k">try</span> <span class="o">{</span>
+</span><span class='line'>      <span class="n">acceptor</span><span class="o">.</span><span class="na">bind</span><span class="o">(</span><span class="k">new</span> <span class="n">InetSocketAddress</span><span class="o">(</span><span class="n">PORT</span><span class="o">));</span>
+</span><span class='line'>      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">&quot;Listening on &quot;</span> <span class="o">+</span> <span class="n">PORT</span><span class="o">);</span>
+</span><span class='line'>    <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="n">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>      <span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+</span><span class='line'>    <span class="o">}</span>
+</span><span class='line'>  <span class="o">}</span>
+</span><span class='line'><span class="o">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>EchoHandler.java</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'>  <span class="kd">public</span> <span class="kd">class</span> <span class="nc">EchoHandler</span> <span class="kd">extends</span> <span class="n">IoHandlerAdapter</span> <span class="o">{</span>
+</span><span class='line'>    <span class="nd">@Override</span>
+</span><span class='line'>    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">messageReceived</span><span class="o">(</span><span class="n">IoSession</span> <span class="n">session</span><span class="o">,</span> <span class="n">Object</span> <span class="n">message</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+</span><span class='line'>      <span class="n">session</span><span class="o">.</span><span class="na">write</span><span class="o">(((</span><span class="n">IoBuffer</span><span class="o">)</span><span class="n">message</span><span class="o">).</span><span class="na">duplicate</span><span class="o">());</span>
+</span><span class='line'>    <span class="o">}</span>
+</span><span class='line'>  <span class="o">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h1>工作原理</h1>
+
+<p>前面介绍了Mina总体的层次结构，那么在Mina里面是怎么使用Java NIO和进行线程调度的呢？这是提高IO处理性能的关键所在。Mina的线程调度原理主要如下图所示：</p>
+
+<center>
+  <img src="http://i.6.cn/cvbnm/bd/46/16/9a9fb8a01640ec6bed25da60ca3eb368.png" alt="mina-threads" title="mina-threads" width="696" height="270" />
+</center>
+
+
+<h2>Acceptor与Connector线程</h2>
+
+<p>在服务器端，bind一个端口后，会创建一个Acceptor线程来负责监听工作。这个线程的工作只有一个，调用Java NIO接口在该端口上select connect事件，获取新建的连接后，封装成IoSession，交由后面的Processor线程处理。在客户端，也有一个类似的，叫Connector的线程与之相对应。这两类线程的数量只有1个，外界无法控制这两类线程的数量。</p>
+
+<p>TCP实现的代码可以参考org.apache.mina.core.polling.AbstractPollingIoAcceptor的内部类Acceptor和org.apache.mina.core.polling.AbstractPollingIoConnector的内部类Connector。</p>
+
+<h2>Processor线程</h2>
+
+<p>Processor线程主要负责具体的IO读写操作和执行后面的IoFilterChain和IoHandler逻辑。Processor线程的数量N默认是CPU数量+1，可以通过配置参数来控制其数量。前面进来的IoSession会被分配到这N个Processor线程中。默认的SimpleIoProcessorPool的策略是session id绝对值对N取模来分配。</p>
+
+<p>每个Porcessor线程中都维护着一个selector，对它维护的IoSession集合进行select，然后对select的结果进行遍历，逐一处理。像前面提到的，读取数据，以事件的形式通知后面IoFilterChain；以及对写请求队列的flush操作，都是在这类线程中来做的。</p>
+
+<p>通过将session均分到多个Processor线程里进行处理，可以充分利用多核的处理能力，减轻select操作的压力。默认的Processor的线程数量设置可以满足大部分情况下的需求，但进一步的优化则需要根据实际环境进行测试。</p>
+
+<h1>线程模型</h1>
+
+<h2>线程模型原理</h2>
+
+<p>从单一的Processor线程内部来看，IO请求的处理流程是单线程顺序处理的。前面也提到过，当Process线程select了一批就绪的IO请求后，会在线程内部逐一对这些IO请求进行处理。处理的流程包括IoFilter和IoHandler里的逻辑。当前面的IO请求处理完毕后，才会取下一个IO请求进行处理。也就是说，如果IoFilter或IoHandler中有比较耗时的操作的话（如：读取数据库等），Processor线程将会被阻塞住，后续的请求将得不到处理。这样的情况在高并发的服务器下显然是不能容忍的。于是，Mina通过在处理流程中引入线程池来解决这个问题。</p>
+
+<p>那么线程池应该加在什么地方呢？正如前面所提到过的：IoFilterChain是Mina的扩展点。没错，Mina里是通过IoFilter的形式来为处理流程添加线程池的。Mina的线程模型主要有一下这几种形式：</p>
+
+<center>
+  <img src="http://i.6.cn/cvbnm/25/fc/8d/ef9f26650f7b167878bdbbabea07bd3d.png" alt="mina-thread-model" title="mina-thread-model" width="902" height="653" />
+</center>
+
+
+<p>第一种模型是单线程模型，也是Mina默认线程模型。也就是Processor包办了从底层IO到上层的IoHandler逻辑的所有执行工作。这种模型比较适合于处理逻辑简单，能快速返回的情况。</p>
+
+<p>第二种模型则是在IoFilterChain中加入了Thread Pool Filter。此时的处理流程变为Processor线程读取完数据后，执行IoFilterChain的逻辑。当执行到Thread Pool Filter的时候，该Filter会将后续的处理流程封装到一个Runnable对象中，并交由Filter自身的线程池来执行，而Processor线程则能立即返回来处理下一个IO请求。这样如果后面的IoFilter或IoHandler中有阻塞操作，只会引起Filter线程池里的线程阻塞，而不会阻塞住Processor线程，从而提高了服务器的处理能力。Mina提供了Thread Pool Filter的一个实现：ExecutorFilter。</p>
+
+<p>当然，也没有限制说chain中只能添加一个ExecutorFilter，开发者也可以在chain中加入多个ExecutorFilter来构成第三种情况，但一般情况下可能没有这个必要。</p>
+
+<h2>请求的处理顺序</h2>
+
+<p>在处理流程中加入线程池，可以较好的提高服务器的吞吐量，但也带来了新的问题：请求的处理顺序问题。在单线程的模型下，可以保证IO请求是挨个顺序地处理的。加入线程池之后，同一个IoSession的多个IO请求可能被ExecutorFilter并行的处理，这对于一些对请求处理顺序有要求的程序来说是不希望看到的。比如：数据库服务器处理同一个会话里的prepare，execute，commit请求希望是能按顺序逐一执行的。</p>
+
+<p>Mina里默认的实现是有保证同一个IoSession中IO请求的顺序的。具体的实现是，ExecutorFilter默认采用了Mina提供的OrderedThreadPoolExecutor作为内置线程池。后者并不会立即执行加入进来的Runnable对象，而是会先从Runnable对象里获取关联的IoSession(这里有个down cast成IoEvent的操作)，并将Runnable对象加入到session的任务列表中。OrderedThreadPoolExecutor会按session里任务列表的顺序来处理请求，从而保证了请求的执行顺序。</p>
+
+<p>对于没有顺序要请求的情况，可以为ExecutorFilter指定一个Executor来替换掉默认的OrderedThreadPoolExecutor，让同一个session的多个请求能被并行地处理，来进一步提高吞吐量。</p>
+
+<h1>参考资料：</h1>
+
+<p>http://mina.apache.org/conferences.data/Mina_in_real_life_ASEU-2009.pdf</p>
+
+<p>http://mina.apache.org/documentation.data/ACAsia2006.pdf</p>
+
+<p>Mina源码</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[seq-queue:在node.js中如何保持请求处理顺序的一些想法]]></title>
+    <link href="http://blog.chang.net/blog/2012/03/31/seq-queue/"/>
+    <updated>2012-03-31T00:00:00+08:00</updated>
+    <id>http://blog.chang.net/blog/2012/03/31/seq-queue</id>
+    <content type="html"><![CDATA[<p>前段时间项目需要，写了这个小模块<a href="https://github.com/changchang/seq-queue">https://github.com/changchang/seq-queue</a>，现在拿出来分享一下~</p>
+
+<p>seq-queue主要是满足一些对请求处理顺序有要求的场景。一般在http处理中，对用户连续的请求可以进行并行处理，无须关心请求的处理顺序。但在另外一些场景下则不然。比如：一个游戏服务器处理，对于玩家的一系列操作，如：combo连招，则希望有严格的执行顺序。又如，数据库服务器处理客户端的prepare，execute，close等这些请求，也需要保证请求的执行顺序。seq-queue则是结合了node.js异步回调的环境设计的一个保持请求顺序化处理的模块。</p>
+
+<!--more-->
+
+
+<h1>简单的例子</h1>
+
+<p>seq-queue的结构非常简单，可以看作是一个FIFO队列，里面的任务只有在它之前的所有任务都被执行完毕后才会被执行。使用也很简单，例子如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'><span class="kd">var</span> <span class="nx">SeqQueue</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">&#39;seq-queue&#39;</span><span class="p">);</span>
+</span><span class='line'><span class="kd">var</span> <span class="nx">queue</span> <span class="o">=</span> <span class="nx">SeqQueue</span><span class="p">.</span><span class="nx">createQueue</span><span class="p">(</span><span class="mi">1000</span><span class="p">);</span>
+</span><span class='line'><span class="nx">queue</span><span class="p">.</span><span class="nx">push</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">task</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>  <span class="nx">setTimeout</span><span class="p">(</span><span class="kd">function</span><span class="p">()</span> <span class="p">{</span>
+</span><span class='line'>    <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">);</span>
+</span><span class='line'>    <span class="nx">task</span><span class="p">.</span><span class="nx">done</span><span class="p">();</span>
+</span><span class='line'>  <span class="p">},</span> <span class="mi">500</span><span class="p">);</span>
+</span><span class='line'><span class="p">});</span>
+</span><span class='line'>
+</span><span class='line'><span class="nx">queue</span><span class="p">.</span><span class="nx">push</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">task</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>  <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;world&#39;</span><span class="p">);</span>
+</span><span class='line'>  <span class="nx">task</span><span class="p">.</span><span class="nx">done</span><span class="p">();</span>
+</span><span class='line'><span class="p">});</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>在服务端，只要为每个client session创建一个seq-queue实例，将需要顺序执行的请求放入其中即可。</p>
+
+<h1>seq-queue的状态机</h1>
+
+<p>seq-queue实例的状态机可以简单用下面的图来描述：</p>
+
+<center>
+    <img title="seq-queue-state" src="http://i.6.cn/cvbnm/e6/4c/43/a595faf0f221792d5afe4b16ef5d5877.jpg" alt="seq-queue-state" width="300" height="254" />
+</center>
+
+
+<p>queue实例创建后默认是idle状态。</p>
+
+<p>通过push方法往queue中添加任务后，变为busy状态。当前任务执行完后会调next方法执行下一个任务，如果无任务可执行则回到idle状态。</p>
+
+<p>可以通过close(false)方法优雅关闭，进入closed状态。closed状态下不会接收新的任务，但会持续执行完队列中剩余的任务。所有剩余任务完成后，进入drained状态，queue实例生命周期结束。</p>
+
+<p>也可以通过close(true)方法强制关闭，直接进入drained状态。</p>
+
+<h1>纠结点</h1>
+
+<p>seq-queue的设计中，主要有下面两个地方比较纠结的。</p>
+
+<p>第一点是，queue中的任务被封装成function的形式，带一个参数task。当任务结束的时候，需要显式地调一下task.done()来通知queue当前任务执行完毕。这个主要是由node.js异步回调的风格所决定的。在node.js中，一个任务的function返回了，并不代表一个任务处理的所有流程已结束，后面可能还有一大堆的回调在等着执行。seq-queue中则主要是借鉴了node-unit里的风格，传递一个task参数，提醒使用者记得执行完毕后调用一下task.done()来结束处理。</p>
+
+<p>第二点就是超时的机制。因为seq-queue是顺序处理的，如果用户忘了调task.done()或是在某个callback中抛了个uncaught exception无疾而终了，queue则会因此而被堵死。为了避免这种情况，queue中的每个任务都设置了一个超时时间，如果超时了会忽略掉当前任务而执行下一个任务。这是异步环境下，异常状态处理的一个权宜之计吧。queue默认的全局超时时间是3s，可以通过createQueue方法指定当前实例的全局超时时间，也可以在push方法中为每个任务设置任务相关的超时时间。超时的任务中再调task.done()不会影响queue的调度。</p>
+
+<h1>小结</h1>
+
+<p>seq-queue写的比较仓促，也没来得及做充分的调查看是否已经有提供类似功能的模块，功能方面也主要是往项目的需求上面靠。大家之前有什么类似的工具，或是有什么好想法，再或者是觉得有什么地方不爽的，都来吐槽一下吧~ :)</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[异步环境下的异常处理]]></title>
+    <link href="http://blog.chang.net/blog/2012/01/19/exception-in-async-enviroment/"/>
+    <updated>2012-01-19T00:00:00+08:00</updated>
+    <id>http://blog.chang.net/blog/2012/01/19/exception-in-async-enviroment</id>
+    <content type="html"><![CDATA[<p>webgame容器的设计中遇到了一个问题，如何处理回调中未捕获的异常，维护系统状态的完整性。而这个问题的根源来自于node.js的异步回调模式。</p>
+
+<p>先回想一下，熟悉的tomcat容器中是如何处理未捕获的异常的。</p>
+
+<p>tomcat的模型比较简单，每个请求由一个单独的线程来处理，采用的是同步阻塞的模式。当一个请求到达后，请求会通过层层filter，最终到达servlet的service的方法。当请求从servlet的处理返回后，再按原路经过层层filter返回。整个处理的过程，都是在同一个线程，同一次函数调用周期中完成的。也就是说，完全可以在请求处理的入口处，用一个try&#8230;catch来捕获处理过程中抛出的所有的未捕获异常，并且在这个入口处，是可以获取到这个请求的上下文的，可以由此来给客户端返回错误的响应。</p>
+
+<p>而在node.js中，采用的是异步回调的模式，处理函数返回，并不代表处理流程完成，可能还有后续的处理逻辑在回调函数中等待触发。而回调函数的触发可能会是在另外一个函数调用周期中，所以在当次请求的入口处包裹try&#8230;catch并不总是能捕捉到回调函数中抛出来的异常。但从另一面来看，回调函数最终一定是由node.js中处理任务的主线程来触发的，所以node可以帮我们捕捉到这些异常，反馈到开发者手里也就是我们所熟悉的uncaughtException事件。但在这种情况下，回调函数的执行环境是node的主线程，所以已无法获取到对应的请求上下文，也就无法给客户端反馈出错的信息了。</p>
+
+<!--more-->
+
+
+<p>作为对比，我简单的考察了一下java中的几个web容器提供异步请求处理接口的例子。</p>
+
+<h1>tomcat comet</h1>
+
+<p>tomcat comet的处理手法比较简单粗暴，由容器管理线程的分配调度，只暴露给用户一个简单的event接口，让用户根据event的类型做处理。整个流程还是控制在容器的管理下的，即使event接口中，用户抛出了未捕获异常，容器还是可以捕捉到，并能知晓请求的上下文。代码框架如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="cm">/**</span>
+</span><span class='line'><span class="cm"> * Process the given Comet event.</span>
+</span><span class='line'><span class="cm"> *</span>
+</span><span class='line'><span class="cm"> * @param event The Comet event that will be processed</span>
+</span><span class='line'><span class="cm"> * @throws IOException</span>
+</span><span class='line'><span class="cm"> * @throws ServletException</span>
+</span><span class='line'><span class="cm"> */</span>
+</span><span class='line'><span class="kd">public</span> <span class="kt">void</span> <span class="nf">event</span><span class="o">(</span><span class="n">CometEvent</span> <span class="n">event</span><span class="o">)</span>
+</span><span class='line'>    <span class="kd">throws</span> <span class="n">IOException</span><span class="o">,</span> <span class="n">ServletException</span> <span class="o">{</span>
+</span><span class='line'>    <span class="n">HttpServletRequest</span> <span class="n">request</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="na">getHttpServletRequest</span><span class="o">();</span>
+</span><span class='line'>    <span class="n">HttpServletResponse</span> <span class="n">response</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="na">getHttpServletResponse</span><span class="o">();</span>
+</span><span class='line'>    <span class="k">if</span> <span class="o">(</span><span class="n">event</span><span class="o">.</span><span class="na">getEventType</span><span class="o">()</span> <span class="o">==</span> <span class="n">CometEvent</span><span class="o">.</span><span class="na">EventType</span><span class="o">.</span><span class="na">BEGIN</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">event</span><span class="o">.</span><span class="na">getEventType</span><span class="o">()</span> <span class="o">==</span> <span class="n">CometEvent</span><span class="o">.</span><span class="na">EventType</span><span class="o">.</span><span class="na">ERROR</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">event</span><span class="o">.</span><span class="na">getEventType</span><span class="o">()</span> <span class="o">==</span> <span class="n">CometEvent</span><span class="o">.</span><span class="na">EventType</span><span class="o">.</span><span class="na">END</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">event</span><span class="o">.</span><span class="na">getEventType</span><span class="o">()</span> <span class="o">==</span> <span class="n">CometEvent</span><span class="o">.</span><span class="na">EventType</span><span class="o">.</span><span class="na">READ</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>    <span class="o">}</span>
+</span><span class='line'><span class="o">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h1>jetty continuation</h1>
+
+<p>jetty continuation的处理手法更加粗暴，通过Continuation实例的suspend方法来让当前请求挂起，并将处理线程归还给容器，等待超时或resume方法被调用时再继续执行该请求。</p>
+
+<p>实现的手法是suspend方法内部会抛除一个RetryRequeset的RuntimeException，以此来终止当前请求的处理流程（具体参考SelectChannelConnector.RetryContinuation）。外层容器捕获该异常后，将请求加入超时队列，线程退还给容器。等到超时和resume方法被调用后，请求会从头再执行一次（包括前面的filter）。所以，continuation要求该类请求所经过的filter和servlet必须是幂等的（可以重复进入，不影响状态）。因为continuation其实是把request的流程再执行一遍，所以它实质上还是同步的模式，所以对未捕获的异常处理等同于tomcat的传统处理方式。</p>
+
+<p>continuation的示例如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="kd">private</span> <span class="kt">void</span> <span class="nf">doPoll</span><span class="o">(</span><span class="n">HttpServletRequest</span> <span class="n">request</span><span class="o">,</span> <span class="n">AjaxResponse</span> <span class="n">response</span><span class="o">)</span>
+</span><span class='line'><span class="o">{</span>
+</span><span class='line'>    <span class="n">HttpSession</span> <span class="n">session</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="na">getSession</span><span class="o">(</span><span class="kc">true</span><span class="o">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="kd">synchronized</span> <span class="o">(</span><span class="n">mutex</span><span class="o">)</span>
+</span><span class='line'>    <span class="o">{</span>
+</span><span class='line'>        <span class="n">Member</span> <span class="n">member</span> <span class="o">=</span> <span class="o">(</span><span class="n">Member</span><span class="o">)</span><span class="n">chatroom</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">session</span><span class="o">.</span><span class="na">getId</span><span class="o">());</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="c1">// Is there any chat events ready to send?</span>
+</span><span class='line'>        <span class="k">if</span> <span class="o">(!</span><span class="n">member</span><span class="o">.</span><span class="na">hasEvents</span><span class="o">())</span>
+</span><span class='line'>        <span class="o">{</span>
+</span><span class='line'>            <span class="c1">// No - so prepare a continuation</span>
+</span><span class='line'>            <span class="n">Continuation</span> <span class="n">continuation</span> <span class="o">=</span> <span class="n">ContinuationSupport</span><span class="o">.</span><span class="na">getContinuation</span><span class="o">(</span><span class="n">request</span><span class="o">,</span> <span class="n">mutex</span><span class="o">);</span>
+</span><span class='line'>            <span class="n">member</span><span class="o">.</span><span class="na">setContinuation</span><span class="o">(</span><span class="n">continuation</span><span class="o">);</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="c1">// wait for an event or timeout</span>
+</span><span class='line'>            <span class="n">continuation</span><span class="o">.</span><span class="na">suspend</span><span class="o">(</span><span class="n">timeoutMS</span><span class="o">);</span>
+</span><span class='line'>        <span class="o">}</span>
+</span><span class='line'>        <span class="n">member</span><span class="o">.</span><span class="na">setContinuation</span><span class="o">(</span><span class="kc">null</span><span class="o">);</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="c1">// send any events</span>
+</span><span class='line'>        <span class="n">member</span><span class="o">.</span><span class="na">sendEvents</span><span class="o">(</span><span class="n">response</span><span class="o">);</span>
+</span><span class='line'>    <span class="o">}</span>
+</span><span class='line'><span class="o">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h1>servlet 3.0</h1>
+
+<p>servlet 3.0中也加入了异步处理的支持，由ServletRequest对象通过startAsync方法获取一个AsyncContext，将请求处理变为异步化，当前的处理函数可以直接结束返回，开发者可以另外开一个线程，通过AsyncContext继续完成后续的响应。这个模型跟node.js是比较类似的。因为处理线程是用户派生的，如果有未捕获异常，容器是不知晓的。而因为异常，AsyncContext的complete或dispatch方法没有执行，将会导致请求无法返回，这点跟node也是类似的。</p>
+
+<p>最后回头看看，在node的异步处理的模式下，容器对回调的控制较弱。一般的形式通过传递回调函数，由开发者代码调用来告知容器处理流程的真正结束，connect，nodeunit等都是用类似的手法来处理。如果回调函数中因为未捕获异常而退出，则后续流程会因此而丢失。做为容器来说，也有可能因为用户的不良代码，忘了调用回调函数而丢掉后面的流程。</p>
+
+<p>暂时也没想到比较好的解决办法，目前的想法是设置回调超时。在每个需要用户代码调用回调的接口添加一个超时记录，用一个类似bitmap的东西来维护reqId和超时记录的映射关系。如果用户代码在指定时间内调用回调函数，则根据reqId清空超时记录;否则对该次请求做超时处理。</p>
+]]></content>
+  </entry>
   
 </feed>
