@@ -2,10 +2,10 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
 
   <title><![CDATA[Category: nodejs | Little Cat in Big World]]></title>
-  <link href="http://blog.chang.net/blog/categories/nodejs/atom.xml" rel="self"/>
-  <link href="http://blog.chang.net/"/>
-  <updated>2012-10-27T01:33:37+08:00</updated>
-  <id>http://blog.chang.net/</id>
+  <link href="http://changchang.github.com/blog/categories/nodejs/atom.xml" rel="self"/>
+  <link href="http://changchang.github.com/"/>
+  <updated>2012-10-28T17:04:16+08:00</updated>
+  <id>http://changchang.github.com/</id>
   <author>
     <name><![CDATA[changchang]]></name>
     
@@ -15,9 +15,9 @@
   
   <entry>
     <title type="html"><![CDATA[connect源码分析--基础架构]]></title>
-    <link href="http://blog.chang.net/blog/2012/05/18/connect-framework/"/>
+    <link href="http://changchang.github.com/blog/2012/05/18/connect-framework/"/>
     <updated>2012-05-18T00:00:00+08:00</updated>
-    <id>http://blog.chang.net/blog/2012/05/18/connect-framework</id>
+    <id>http://changchang.github.com/blog/2012/05/18/connect-framework</id>
     <content type="html"><![CDATA[<p>connect是TJ tx给node.js社区贡献的一个热门的web基础框架。TJ的另一力作express框架便是在它基础之上构建的。与express不同，connect更加短小精悍，是一个偏向基础设施的框架。</p>
 
 <p>正如名字所表达的一样，connect框架做的事情很简单，就是把一系列的组件连接到一起，然后让http的请求依次流过这些组件。这些被connect串联起来的组件被称为中间件（middlewire）。在connect中，http请求的处理流程被划分成一个个小片段，每一个小片段代表一项处理任务（如：请求body的解析，session的维护等），由一个中间件负责，前后片段之间靠request，response等对象传递中间数据。connect框架对这些处理细节并不关心，只知道将请求从一个中间件导向下一个中间件。connect的核心代码非常精简，加上注释，也就只有寥寥200来行代码。本文参考的connect版本为2.2.2（这个版本号好像有点特别-_-b）。</p>
@@ -174,9 +174,9 @@ return app;
   
   <entry>
     <title type="html"><![CDATA[seq-queue:在node.js中如何保持请求处理顺序的一些想法]]></title>
-    <link href="http://blog.chang.net/blog/2012/03/31/seq-queue/"/>
+    <link href="http://changchang.github.com/blog/2012/03/31/seq-queue/"/>
     <updated>2012-03-31T00:00:00+08:00</updated>
-    <id>http://blog.chang.net/blog/2012/03/31/seq-queue</id>
+    <id>http://changchang.github.com/blog/2012/03/31/seq-queue</id>
     <content type="html"><![CDATA[<p>前段时间项目需要，写了这个小模块<a href="https://github.com/changchang/seq-queue">https://github.com/changchang/seq-queue</a>，现在拿出来分享一下~</p>
 
 <p>seq-queue主要是满足一些对请求处理顺序有要求的场景。一般在http处理中，对用户连续的请求可以进行并行处理，无须关心请求的处理顺序。但在另外一些场景下则不然。比如：一个游戏服务器处理，对于玩家的一系列操作，如：combo连招，则希望有严格的执行顺序。又如，数据库服务器处理客户端的prepare，execute，close等这些请求，也需要保证请求的执行顺序。seq-queue则是结合了node.js异步回调的环境设计的一个保持请求顺序化处理的模块。</p>
@@ -242,9 +242,9 @@ queue.push(function(task) {
   
   <entry>
     <title type="html"><![CDATA[异步环境下的异常处理]]></title>
-    <link href="http://blog.chang.net/blog/2012/01/19/exception-in-async-enviroment/"/>
+    <link href="http://changchang.github.com/blog/2012/01/19/exception-in-async-enviroment/"/>
     <updated>2012-01-19T00:00:00+08:00</updated>
-    <id>http://blog.chang.net/blog/2012/01/19/exception-in-async-enviroment</id>
+    <id>http://changchang.github.com/blog/2012/01/19/exception-in-async-enviroment</id>
     <content type="html"><![CDATA[<p>webgame容器的设计中遇到了一个问题，如何处理回调中未捕获的异常，维护系统状态的完整性。而这个问题的根源来自于node.js的异步回调模式。</p>
 
 <p>先回想一下，熟悉的tomcat容器中是如何处理未捕获的异常的。</p>
