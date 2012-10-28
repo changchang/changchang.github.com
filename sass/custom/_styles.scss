@@ -30,13 +30,13 @@ body > header{
 }
 
 body > header h1{
-  font-size: 2.5em;
+  font-size: 2.0em;
   padding-left: 20px;
   text-shadow: rgba(0, 0, 0, 0.8) 0 0 8px;
 }
 
 body > header h2{
-  font-size: 0.9em;
+  font-size: 0.7em;
   letter-spacing: 1px;
   margin-top: 0.5em;
   padding-left: 25px;
@@ -144,7 +144,7 @@ body > footer{
   } 
   */
 
-  body > header h2 { padding-left: 60px; }
+  body > header h2 { padding-left: 25px; }
 
   body > footer { margin-bottom: 3em; }
 }

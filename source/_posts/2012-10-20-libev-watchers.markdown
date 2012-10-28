@@ -45,7 +45,7 @@ anfds其实是一个数组，它使用fd作为下标，数组中的元素是一�
 
 ##ev_io的选取
 
-前面我们已经向libev的loop中插入了一个ev_io，那么libev是怎么把这个ev_io注册到底层io并响应底层的io事件的呢？ 要回答这个问题，我们得先回到[上一篇文章](blog/2012/10/09/libev-framwork/)。从ev_run流程图中可以看到，ev_io的选取由fd_reify和backend_poll这两个步骤来完成。
+前面我们已经向libev的loop中插入了一个ev_io，那么libev是怎么把这个ev_io注册到底层io并响应底层的io事件的呢？ 要回答这个问题，我们得先回到[上一篇文章](/blog/2012/10/09/libev-framework/)。从ev_run流程图中可以看到，ev_io的选取由fd_reify和backend_poll这两个步骤来完成。
 
 fd_reify函数的工作主要是遍历fdchanges，将对应列表的watcher的events字段合并到ANFD结构的events字段。ANFD上如果新的events与原来监听的events不一致，则表示在这个fd上监听的事件集发生了变化，需要将fd和事件集合通过backend_modify注册到底层的io库。
 
