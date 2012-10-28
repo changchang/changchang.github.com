@@ -1,0 +1,63 @@
+---
+layout: post
+title: seq-queue:在node.js中如何保持请求处理顺序的一些想法
+categories:
+- nodejs
+tags: [node.js]
+published: true
+comments: true
+---
+
+前段时间项目需要，写了这个小模块[https://github.com/changchang/seq-queue](https://github.com/changchang/seq-queue)，现在拿出来分享一下~
+
+seq-queue主要是满足一些对请求处理顺序有要求的场景。一般在http处理中，对用户连续的请求可以进行并行处理，无须关心请求的处理顺序。但在另外一些场景下则不然。比如：一个游戏服务器处理，对于玩家的一系列操作，如：combo连招，则希望有严格的执行顺序。又如，数据库服务器处理客户端的prepare，execute，close等这些请求，也需要保证请求的执行顺序。seq-queue则是结合了node.js异步回调的环境设计的一个保持请求顺序化处理的模块。
+
+<!--more-->
+
+#简单的例子
+
+seq-queue的结构非常简单，可以看作是一个FIFO队列，里面的任务只有在它之前的所有任务都被执行完毕后才会被执行。使用也很简单，例子如下：
+
+```javascript
+	var SeqQueue = require('seq-queue');
+	var queue = SeqQueue.createQueue(1000);
+	queue.push(function(task) {
+	  setTimeout(function() {
+	    console.log('hello');
+	    task.done();
+	  }, 500);
+	});
+
+	queue.push(function(task) {
+	  console.log('world');
+	  task.done();
+	});
+```
+
+在服务端，只要为每个client session创建一个seq-queue实例，将需要顺序执行的请求放入其中即可。
+
+#seq-queue的状态机
+
+seq-queue实例的状态机可以简单用下面的图来描述：
+
+<center>
+	<img title="seq-queue-state" src="http://i.6.cn/cvbnm/e6/4c/43/a595faf0f221792d5afe4b16ef5d5877.jpg" alt="seq-queue-state" width="300" height="254" />
+</center>
+
+queue实例创建后默认是idle状态。
+
+通过push方法往queue中添加任务后，变为busy状态。当前任务执行完后会调next方法执行下一个任务，如果无任务可执行则回到idle状态。
+
+可以通过close(false)方法优雅关闭，进入closed状态。closed状态下不会接收新的任务，但会持续执行完队列中剩余的任务。所有剩余任务完成后，进入drained状态，queue实例生命周期结束。
+
+也可以通过close(true)方法强制关闭，直接进入drained状态。
+
+#纠结点
+seq-queue的设计中，主要有下面两个地方比较纠结的。
+
+第一点是，queue中的任务被封装成function的形式，带一个参数task。当任务结束的时候，需要显式地调一下task.done()来通知queue当前任务执行完毕。这个主要是由node.js异步回调的风格所决定的。在node.js中，一个任务的function返回了，并不代表一个任务处理的所有流程已结束，后面可能还有一大堆的回调在等着执行。seq-queue中则主要是借鉴了node-unit里的风格，传递一个task参数，提醒使用者记得执行完毕后调用一下task.done()来结束处理。
+
+第二点就是超时的机制。因为seq-queue是顺序处理的，如果用户忘了调task.done()或是在某个callback中抛了个uncaught exception无疾而终了，queue则会因此而被堵死。为了避免这种情况，queue中的每个任务都设置了一个超时时间，如果超时了会忽略掉当前任务而执行下一个任务。这是异步环境下，异常状态处理的一个权宜之计吧。queue默认的全局超时时间是3s，可以通过createQueue方法指定当前实例的全局超时时间，也可以在push方法中为每个任务设置任务相关的超时时间。超时的任务中再调task.done()不会影响queue的调度。
+
+#小结
+seq-queue写的比较仓促，也没来得及做充分的调查看是否已经有提供类似功能的模块，功能方面也主要是往项目的需求上面靠。大家之前有什么类似的工具，或是有什么好想法，再或者是觉得有什么地方不爽的，都来吐槽一下吧~ :)

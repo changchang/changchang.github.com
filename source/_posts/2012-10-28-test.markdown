@@ -1,0 +1,8 @@
+---
+layout: post
+title: "test"
+date: 2012-10-28 16:49
+comments: true
+published: false
+categories: 
+---
