@@ -2,10 +2,10 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
 
   <title><![CDATA[Little Cat in Big World]]></title>
-  <link href="http://changchang.github.com/atom.xml" rel="self"/>
-  <link href="http://changchang.github.com/"/>
-  <updated>2012-10-28T17:29:26+08:00</updated>
-  <id>http://changchang.github.com/</id>
+  <link href="http://codingcat.net/atom.xml" rel="self"/>
+  <link href="http://codingcat.net/"/>
+  <updated>2012-10-28T18:13:53+08:00</updated>
+  <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
     
@@ -15,9 +15,9 @@
   
   <entry>
     <title type="html"><![CDATA[libev源码分析 -- 常用watcher]]></title>
-    <link href="http://changchang.github.com/blog/2012/10/20/libev-watchers/"/>
+    <link href="http://codingcat.net/blog/2012/10/20/libev-watchers/"/>
     <updated>2012-10-20T00:00:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/10/20/libev-watchers</id>
+    <id>http://codingcat.net/blog/2012/10/20/libev-watchers</id>
     <content type="html"><![CDATA[<p>在上一篇文章里，我们分析了libev整体设计思想和主循环的工作原理，也提到了watcher是衔接开发者代码的主要入口。watcher与开发者最接近，也与具体事件处理逻辑最接近。所以，watcher的具体实现，与性能的关系也相当密切。下面，我们就来分析一下，libev中常用的几种watcher的设计与实现。</p>
 
 <!-- more -->
@@ -69,7 +69,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 
 <h2>ev_io的选取</h2>
 
-<p>前面我们已经向libev的loop中插入了一个ev_io，那么libev是怎么把这个ev_io注册到底层io并响应底层的io事件的呢？ 要回答这个问题，我们得先回到<a href="blog/2012/10/09/libev-framwork/">上一篇文章</a>。从ev_run流程图中可以看到，ev_io的选取由fd_reify和backend_poll这两个步骤来完成。</p>
+<p>前面我们已经向libev的loop中插入了一个ev_io，那么libev是怎么把这个ev_io注册到底层io并响应底层的io事件的呢？ 要回答这个问题，我们得先回到<a href="http://codingcat.net/blog/2012/10/09/libev-framwork/">上一篇文章</a>。从ev_run流程图中可以看到，ev_io的选取由fd_reify和backend_poll这两个步骤来完成。</p>
 
 <p>fd_reify函数的工作主要是遍历fdchanges，将对应列表的watcher的events字段合并到ANFD结构的events字段。ANFD上如果新的events与原来监听的events不一致，则表示在这个fd上监听的事件集发生了变化，需要将fd和事件集合通过backend_modify注册到底层的io库。</p>
 
@@ -137,9 +137,9 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
   
   <entry>
     <title type="html"><![CDATA[libev源码分析 -- 整体设计]]></title>
-    <link href="http://changchang.github.com/blog/2012/10/09/libev-framework/"/>
+    <link href="http://codingcat.net/blog/2012/10/09/libev-framework/"/>
     <updated>2012-10-09T00:00:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/10/09/libev-framework</id>
+    <id>http://codingcat.net/blog/2012/10/09/libev-framework</id>
     <content type="html"><![CDATA[<p><a href="http://software.schmorp.de/pkg/libev.html">libev</a>是Marc Lehmann用C写的高性能事件循环库。通过libev，可以灵活地把各种事件组织管理起来，如：时钟、io、信号等。libev在业界内也是广受好评，不少项目都采用它来做底层的事件循环。node.js也是其中之一。 学习和分析libev库，有助于理解node.js底层的工作原理，同时也可以学习和借鉴libev的设计思想。本文是最近在学习libev源码的一些心得总结吧。</p>
 
 <!-- more -->
@@ -389,9 +389,9 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
   
   <entry>
     <title type="html"><![CDATA[从wordpress到octopress]]></title>
-    <link href="http://changchang.github.com/blog/2012/10/08/from-wordpress-to-octopress/"/>
+    <link href="http://codingcat.net/blog/2012/10/08/from-wordpress-to-octopress/"/>
     <updated>2012-10-08T00:28:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/10/08/from-wordpress-to-octopress</id>
+    <id>http://codingcat.net/blog/2012/10/08/from-wordpress-to-octopress</id>
     <content type="html"><![CDATA[<h1>前记</h1>
 
 <p>兜兜转转，终于还是受不了wordpress的繁杂控制后台和二逼编辑器了，下定决心搬到octopress来了。相比wp，op更加清爽，更容易支配，更符合我的口味吧。比较喜欢op的组织结构，每篇文章都是一个文本文件，支持markdown格式，方便编辑和控制，好过面对冷冰冰的数据库。于是有了这个折腾之旅。</p>
@@ -443,9 +443,9 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
   
   <entry>
     <title type="html"><![CDATA[connect源码分析--基础架构]]></title>
-    <link href="http://changchang.github.com/blog/2012/05/18/connect-framework/"/>
+    <link href="http://codingcat.net/blog/2012/05/18/connect-framework/"/>
     <updated>2012-05-18T00:00:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/05/18/connect-framework</id>
+    <id>http://codingcat.net/blog/2012/05/18/connect-framework</id>
     <content type="html"><![CDATA[<p>connect是TJ tx给node.js社区贡献的一个热门的web基础框架。TJ的另一力作express框架便是在它基础之上构建的。与express不同，connect更加短小精悍，是一个偏向基础设施的框架。</p>
 
 <p>正如名字所表达的一样，connect框架做的事情很简单，就是把一系列的组件连接到一起，然后让http的请求依次流过这些组件。这些被connect串联起来的组件被称为中间件（middlewire）。在connect中，http请求的处理流程被划分成一个个小片段，每一个小片段代表一项处理任务（如：请求body的解析，session的维护等），由一个中间件负责，前后片段之间靠request，response等对象传递中间数据。connect框架对这些处理细节并不关心，只知道将请求从一个中间件导向下一个中间件。connect的核心代码非常精简，加上注释，也就只有寥寥200来行代码。本文参考的connect版本为2.2.2（这个版本号好像有点特别-_-b）。</p>
@@ -632,9 +632,9 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
   
   <entry>
     <title type="html"><![CDATA[Mina工作原理分析]]></title>
-    <link href="http://changchang.github.com/blog/2012/04/15/mina-architecture/"/>
+    <link href="http://codingcat.net/blog/2012/04/15/mina-architecture/"/>
     <updated>2012-04-15T00:00:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/04/15/mina-architecture</id>
+    <id>http://codingcat.net/blog/2012/04/15/mina-architecture</id>
     <content type="html"><![CDATA[<p>Mina是Apache社区维护的一个开源的高性能IO框架，在业界内久经考验，广为使用。Mina与后来兴起的高性能IO新贵Netty一样，都是韩国人Trustin Lee的大作，二者的设计理念是极为相似的。在作为一个强大的开发工具的同时，这两个框架的优雅设计和不俗的表现，有很多地方是值得学习和借鉴的。本文将从Mina工作原理的角度出发，对其结构进行分析。</p>
 
 <!--more-->
@@ -781,9 +781,9 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
   
   <entry>
     <title type="html"><![CDATA[seq-queue:在node.js中如何保持请求处理顺序的一些想法]]></title>
-    <link href="http://changchang.github.com/blog/2012/03/31/seq-queue/"/>
+    <link href="http://codingcat.net/blog/2012/03/31/seq-queue/"/>
     <updated>2012-03-31T00:00:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/03/31/seq-queue</id>
+    <id>http://codingcat.net/blog/2012/03/31/seq-queue</id>
     <content type="html"><![CDATA[<p>前段时间项目需要，写了这个小模块<a href="https://github.com/changchang/seq-queue">https://github.com/changchang/seq-queue</a>，现在拿出来分享一下~</p>
 
 <p>seq-queue主要是满足一些对请求处理顺序有要求的场景。一般在http处理中，对用户连续的请求可以进行并行处理，无须关心请求的处理顺序。但在另外一些场景下则不然。比如：一个游戏服务器处理，对于玩家的一系列操作，如：combo连招，则希望有严格的执行顺序。又如，数据库服务器处理客户端的prepare，execute，close等这些请求，也需要保证请求的执行顺序。seq-queue则是结合了node.js异步回调的环境设计的一个保持请求顺序化处理的模块。</p>
@@ -859,9 +859,9 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
   
   <entry>
     <title type="html"><![CDATA[异步环境下的异常处理]]></title>
-    <link href="http://changchang.github.com/blog/2012/01/19/exception-in-async-enviroment/"/>
+    <link href="http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment/"/>
     <updated>2012-01-19T00:00:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/01/19/exception-in-async-enviroment</id>
+    <id>http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment</id>
     <content type="html"><![CDATA[<p>webgame容器的设计中遇到了一个问题，如何处理回调中未捕获的异常，维护系统状态的完整性。而这个问题的根源来自于node.js的异步回调模式。</p>
 
 <p>先回想一下，熟悉的tomcat容器中是如何处理未捕获的异常的。</p>

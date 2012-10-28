@@ -18,7 +18,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   
-  <link rel="canonical" href="http://changchang.github.com/blog/2012/10/20/libev-watchers/">
+  <link rel="canonical" href="http://codingcat.net/blog/2012/10/20/libev-watchers/">
   <link href="/favicon.png" rel="icon">
   <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
   <link href='http://fonts.googleapis.com/css?family=Lato:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
@@ -50,7 +50,7 @@
   
 <form action="http://google.com/search" method="get">
   <fieldset role="search">
-    <input type="hidden" name="q" value="site:changchang.github.com" />
+    <input type="hidden" name="q" value="site:codingcat.net" />
     <input class="search" type="text" name="q" results="0" placeholder="Search"/>
   </fieldset>
 </form>
@@ -144,7 +144,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 
 <h2>ev_io的选取</h2>
 
-<p>前面我们已经向libev的loop中插入了一个ev_io，那么libev是怎么把这个ev_io注册到底层io并响应底层的io事件的呢？ 要回答这个问题，我们得先回到<a href="blog/2012/10/09/libev-framwork/">上一篇文章</a>。从ev_run流程图中可以看到，ev_io的选取由fd_reify和backend_poll这两个步骤来完成。</p>
+<p>前面我们已经向libev的loop中插入了一个ev_io，那么libev是怎么把这个ev_io注册到底层io并响应底层的io事件的呢？ 要回答这个问题，我们得先回到<a href="/blog/2012/10/09/libev-framwork/">上一篇文章</a>。从ev_run流程图中可以看到，ev_io的选取由fd_reify和backend_poll这两个步骤来完成。</p>
 
 <p>fd_reify函数的工作主要是遍历fdchanges，将对应列表的watcher的events字段合并到ANFD结构的events字段。ANFD上如果新的events与原来监听的events不一致，则表示在这个fd上监听的事件集发生了变化，需要将fd和事件集合通过backend_modify注册到底层的io库。</p>
 
@@ -321,8 +321,8 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
       
         
         // var disqus_developer = 1;
-        var disqus_identifier = 'http://changchang.github.com/blog/2012/10/20/libev-watchers/';
-        var disqus_url = 'http://changchang.github.com/blog/2012/10/20/libev-watchers/';
+        var disqus_identifier = 'http://codingcat.net/blog/2012/10/20/libev-watchers/';
+        var disqus_url = 'http://codingcat.net/blog/2012/10/20/libev-watchers/';
         var disqus_script = 'embed.js';
       
     (function () {

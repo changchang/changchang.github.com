@@ -2,10 +2,10 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
 
   <title><![CDATA[Category: C/C++ | Little Cat in Big World]]></title>
-  <link href="http://changchang.github.com/blog/categories/c-c-/atom.xml" rel="self"/>
-  <link href="http://changchang.github.com/"/>
-  <updated>2012-10-28T17:29:26+08:00</updated>
-  <id>http://changchang.github.com/</id>
+  <link href="http://codingcat.net/blog/categories/c-c-/atom.xml" rel="self"/>
+  <link href="http://codingcat.net/"/>
+  <updated>2012-10-28T18:13:53+08:00</updated>
+  <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
     
@@ -15,9 +15,9 @@
   
   <entry>
     <title type="html"><![CDATA[libev源码分析 -- 常用watcher]]></title>
-    <link href="http://changchang.github.com/blog/2012/10/20/libev-watchers/"/>
+    <link href="http://codingcat.net/blog/2012/10/20/libev-watchers/"/>
     <updated>2012-10-20T00:00:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/10/20/libev-watchers</id>
+    <id>http://codingcat.net/blog/2012/10/20/libev-watchers</id>
     <content type="html"><![CDATA[<p>在上一篇文章里，我们分析了libev整体设计思想和主循环的工作原理，也提到了watcher是衔接开发者代码的主要入口。watcher与开发者最接近，也与具体事件处理逻辑最接近。所以，watcher的具体实现，与性能的关系也相当密切。下面，我们就来分析一下，libev中常用的几种watcher的设计与实现。</p>
 
 <!-- more -->
@@ -64,7 +64,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 
 <h2>ev_io的选取</h2>
 
-<p>前面我们已经向libev的loop中插入了一个ev_io，那么libev是怎么把这个ev_io注册到底层io并响应底层的io事件的呢？ 要回答这个问题，我们得先回到<a href="blog/2012/10/09/libev-framwork/">上一篇文章</a>。从ev_run流程图中可以看到，ev_io的选取由fd_reify和backend_poll这两个步骤来完成。</p>
+<p>前面我们已经向libev的loop中插入了一个ev_io，那么libev是怎么把这个ev_io注册到底层io并响应底层的io事件的呢？ 要回答这个问题，我们得先回到<a href="/blog/2012/10/09/libev-framwork/">上一篇文章</a>。从ev_run流程图中可以看到，ev_io的选取由fd_reify和backend_poll这两个步骤来完成。</p>
 
 <p>fd_reify函数的工作主要是遍历fdchanges，将对应列表的watcher的events字段合并到ANFD结构的events字段。ANFD上如果新的events与原来监听的events不一致，则表示在这个fd上监听的事件集发生了变化，需要将fd和事件集合通过backend_modify注册到底层的io库。</p>
 
@@ -132,9 +132,9 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
   
   <entry>
     <title type="html"><![CDATA[libev源码分析 -- 整体设计]]></title>
-    <link href="http://changchang.github.com/blog/2012/10/09/libev-framework/"/>
+    <link href="http://codingcat.net/blog/2012/10/09/libev-framework/"/>
     <updated>2012-10-09T00:00:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/10/09/libev-framework</id>
+    <id>http://codingcat.net/blog/2012/10/09/libev-framework</id>
     <content type="html"><![CDATA[<p><a href="http://software.schmorp.de/pkg/libev.html">libev</a>是Marc Lehmann用C写的高性能事件循环库。通过libev，可以灵活地把各种事件组织管理起来，如：时钟、io、信号等。libev在业界内也是广受好评，不少项目都采用它来做底层的事件循环。node.js也是其中之一。 学习和分析libev库，有助于理解node.js底层的工作原理，同时也可以学习和借鉴libev的设计思想。本文是最近在学习libev源码的一些心得总结吧。</p>
 
 <!-- more -->

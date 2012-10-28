@@ -2,10 +2,10 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
 
   <title><![CDATA[Category: Java | Little Cat in Big World]]></title>
-  <link href="http://changchang.github.com/blog/categories/java/atom.xml" rel="self"/>
-  <link href="http://changchang.github.com/"/>
-  <updated>2012-10-28T17:29:26+08:00</updated>
-  <id>http://changchang.github.com/</id>
+  <link href="http://codingcat.net/blog/categories/java/atom.xml" rel="self"/>
+  <link href="http://codingcat.net/"/>
+  <updated>2012-10-28T18:13:53+08:00</updated>
+  <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
     
@@ -15,9 +15,9 @@
   
   <entry>
     <title type="html"><![CDATA[Mina工作原理分析]]></title>
-    <link href="http://changchang.github.com/blog/2012/04/15/mina-architecture/"/>
+    <link href="http://codingcat.net/blog/2012/04/15/mina-architecture/"/>
     <updated>2012-04-15T00:00:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/04/15/mina-architecture</id>
+    <id>http://codingcat.net/blog/2012/04/15/mina-architecture</id>
     <content type="html"><![CDATA[<p>Mina是Apache社区维护的一个开源的高性能IO框架，在业界内久经考验，广为使用。Mina与后来兴起的高性能IO新贵Netty一样，都是韩国人Trustin Lee的大作，二者的设计理念是极为相似的。在作为一个强大的开发工具的同时，这两个框架的优雅设计和不俗的表现，有很多地方是值得学习和借鉴的。本文将从Mina工作原理的角度出发，对其结构进行分析。</p>
 
 <!--more-->
@@ -151,9 +151,9 @@ public void messageReceived(IoSession session, Object message) throws Exception 
   
   <entry>
     <title type="html"><![CDATA[异步环境下的异常处理]]></title>
-    <link href="http://changchang.github.com/blog/2012/01/19/exception-in-async-enviroment/"/>
+    <link href="http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment/"/>
     <updated>2012-01-19T00:00:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/01/19/exception-in-async-enviroment</id>
+    <id>http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment</id>
     <content type="html"><![CDATA[<p>webgame容器的设计中遇到了一个问题，如何处理回调中未捕获的异常，维护系统状态的完整性。而这个问题的根源来自于node.js的异步回调模式。</p>
 
 <p>先回想一下，熟悉的tomcat容器中是如何处理未捕获的异常的。</p>

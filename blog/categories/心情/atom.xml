@@ -2,10 +2,10 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
 
   <title><![CDATA[Category: 心情 | Little Cat in Big World]]></title>
-  <link href="http://changchang.github.com/blog/categories/心情/atom.xml" rel="self"/>
-  <link href="http://changchang.github.com/"/>
-  <updated>2012-10-28T17:29:26+08:00</updated>
-  <id>http://changchang.github.com/</id>
+  <link href="http://codingcat.net/blog/categories/心情/atom.xml" rel="self"/>
+  <link href="http://codingcat.net/"/>
+  <updated>2012-10-28T18:13:53+08:00</updated>
+  <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
     
@@ -15,9 +15,9 @@
   
   <entry>
     <title type="html"><![CDATA[从wordpress到octopress]]></title>
-    <link href="http://changchang.github.com/blog/2012/10/08/from-wordpress-to-octopress/"/>
+    <link href="http://codingcat.net/blog/2012/10/08/from-wordpress-to-octopress/"/>
     <updated>2012-10-08T00:28:00+08:00</updated>
-    <id>http://changchang.github.com/blog/2012/10/08/from-wordpress-to-octopress</id>
+    <id>http://codingcat.net/blog/2012/10/08/from-wordpress-to-octopress</id>
     <content type="html"><![CDATA[<h1>前记</h1>
 
 <p>兜兜转转，终于还是受不了wordpress的繁杂控制后台和二逼编辑器了，下定决心搬到octopress来了。相比wp，op更加清爽，更容易支配，更符合我的口味吧。比较喜欢op的组织结构，每篇文章都是一个文本文件，支持markdown格式，方便编辑和控制，好过面对冷冰冰的数据库。于是有了这个折腾之旅。</p>
