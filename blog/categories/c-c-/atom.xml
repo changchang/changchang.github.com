@@ -4,7 +4,7 @@
   <title><![CDATA[Category: C/C++ | Little Cat in Big World]]></title>
   <link href="http://codingcat.net/blog/categories/c-c-/atom.xml" rel="self"/>
   <link href="http://codingcat.net/"/>
-  <updated>2012-10-28T22:01:50+08:00</updated>
+  <updated>2012-10-29T10:01:01+08:00</updated>
   <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
@@ -56,7 +56,9 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 </center>
 
 
-<p>anfds其实是一个数组，它使用fd作为下标，数组中的元素是一个ANFD的结构。ANFD是一个维护fd信息的结构体。其中，events记录了当前fd上感兴趣的事件的记录。head是watcher列表的头指针，这个列表就是在这个fd上注册的watcher列表。当fd的大小超出了anfds的容量，anfds会进行相应的扩展。anfds可以理解成一个简易的map，记录了fd与ANFD结构的映射关系。虽然，fd的申请不一定是连续的，可能会导致数组中出现空洞，但通过fd可以迅速获取到相应的watcher列表，这也许是用空间换取时间的一个考量吧。</p>
+<p>anfds其实是一个数组，它使用fd作为下标，数组中的元素是一个ANFD的结构。ANFD是一个维护fd信息的结构体。其中，events记录了当前fd上感兴趣的事件的记录。head是watcher列表的头指针，这个列表就是在这个fd上注册的watcher列表。当fd的大小超出了anfds的容量，anfds会进行相应的扩展。</p>
+
+<p>anfds可以理解成一个简易的map，记录了fd与ANFD结构的映射关系。虽然，fd的申请和释放操作会导致fd不一定是连续的，从而导致数组中出现空洞，但通过fd可以迅速获取到相应的watcher列表，这也许是用空间换取时间的一个考量吧。另一方面，因为fd的释放操作并不会发出通知，而系统分配fd总是采用可用的最小fd。所以如果一个fd在别处被释放，这个fd则很有可能被分配给随后打开的其他文件。而libev对这个过程是完全不知情的，所以它会傻傻的一直认为这个fd一直指向同一个文件，默默地服务着上面发生的事件。libev不负责管理fd的改变行为，而是把这个任务交给了外面，也就是说，如果外面fd发生了改变，需要调用ev_io_set或ev_io_init来重新设定fd与watcher的关系。</p>
 
 <h2>ev_io的插入</h2>
 
