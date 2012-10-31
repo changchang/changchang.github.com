@@ -6,6 +6,8 @@ categories:
 tags: [Java, Network]
 published: true
 comments: true
+description: mina源代码分析，分析框架设计和高性能服务器设计方案
+keywords: mina, java, 源代码分析, 高性能网络服务器, 设计方案
 ---
 
 Mina是Apache社区维护的一个开源的高性能IO框架，在业界内久经考验，广为使用。Mina与后来兴起的高性能IO新贵Netty一样，都是韩国人Trustin Lee的大作，二者的设计理念是极为相似的。在作为一个强大的开发工具的同时，这两个框架的优雅设计和不俗的表现，有很多地方是值得学习和借鉴的。本文将从Mina工作原理的角度出发，对其结构进行分析。

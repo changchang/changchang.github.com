@@ -7,6 +7,8 @@ categories:
 tags: []
 published: true
 comments: true
+description: 异步环境下异常处理的思路
+keywords: node.js, java, tomcat, jetty, servlet3, 异步服务器, 异常
 ---
 
 webgame容器的设计中遇到了一个问题，如何处理回调中未捕获的异常，维护系统状态的完整性。而这个问题的根源来自于node.js的异步回调模式。

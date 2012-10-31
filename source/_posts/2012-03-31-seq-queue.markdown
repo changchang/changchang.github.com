@@ -6,6 +6,8 @@ categories:
 tags: [node.js]
 published: true
 comments: true
+descrition: seq-queue设计思路，在异步环境下如何保持请求的顺序
+keywords: node.js，异步服务器, 请求处理顺序, seq-queue, github
 ---
 
 前段时间项目需要，写了这个小模块[https://github.com/changchang/seq-queue](https://github.com/changchang/seq-queue)，现在拿出来分享一下~

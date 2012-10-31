@@ -5,6 +5,8 @@ categories: C/C++
 tags: [libev, C/C++, 源码分析]
 published: true
 comments: true
+description: libev源代码分析，分析libev整体框架的设计思想
+keywords: libev, 源代码分析, 设计思想
 ---
 
 [libev](http://software.schmorp.de/pkg/libev.html)是Marc Lehmann用C写的高性能事件循环库。通过libev，可以灵活地把各种事件组织管理起来，如：时钟、io、信号等。libev在业界内也是广受好评，不少项目都采用它来做底层的事件循环。node.js也是其中之一。 学习和分析libev库，有助于理解node.js底层的工作原理，同时也可以学习和借鉴libev的设计思想。本文是最近在学习libev源码的一些心得总结吧。

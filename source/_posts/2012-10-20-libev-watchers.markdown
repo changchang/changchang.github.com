@@ -5,6 +5,8 @@ categories: C/C++
 tags: [libev, C/C++, 源码分析]
 published: true
 comments: true
+description: libev源代码分析, 包含常用watcher, 如：ev_io, ev_timer, ev_prepare, ev_check和ev_idle等
+keywords: libev, 源代码分析, watcher, ev_io, ev_timer, ev_prepare, ev_check, ev_idle
 ---
 
 在上一篇文章里，我们分析了libev整体设计思想和主循环的工作原理，也提到了watcher是衔接开发者代码的主要入口。watcher与开发者最接近，也与具体事件处理逻辑最接近。所以，watcher的具体实现，与性能的关系也相当密切。下面，我们就来分析一下，libev中常用的几种watcher的设计与实现。

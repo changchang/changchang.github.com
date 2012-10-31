@@ -6,6 +6,8 @@ categories:
 tags: [node.js]
 published: true
 comments: true
+description: connect源代码分析, 分析基础框架设计。
+keywords: connect, node.js, 源代码分析
 ---
 connect是TJ tx给node.js社区贡献的一个热门的web基础框架。TJ的另一力作express框架便是在它基础之上构建的。与express不同，connect更加短小精悍，是一个偏向基础设施的框架。
 
