@@ -4,7 +4,7 @@
   <title><![CDATA[Little Cat in Big World]]></title>
   <link href="http://codingcat.net/atom.xml" rel="self"/>
   <link href="http://codingcat.net/"/>
-  <updated>2012-11-02T09:59:37+08:00</updated>
+  <updated>2012-11-03T11:27:06+08:00</updated>
   <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
@@ -1287,6 +1287,338 @@ Deleted branch hotfix-1.2.1 (was abbe5d6).
 
 <p>中文原文地址：<a href="http://www.juvenxu.com/2010/11/28/a-successful-git-branching-model/">http://www.juvenxu.com/2010/11/28/a-successful-git-branching-model/</a>
 英文原文地址：<a href="http://nvie.com/posts/a-successful-git-branching-model/">http://nvie.com/posts/a-successful-git-branching-model/</a></p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[node.js的循环依赖]]></title>
+    <link href="http://codingcat.net/blog/2011/12/30/trap-for-circle-dependencies-of-node-js/"/>
+    <updated>2011-12-30T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2011/12/30/trap-for-circle-dependencies-of-node-js</id>
+    <content type="html"><![CDATA[<p>循环依赖，简单点来说就是a文件中require b文件，然后b文件中又反过来require a文件。这个问题我们平时可能并不大注意到，但如果处理不好可能会引起一些让人摸不清的问题。在node中，是如何处理循环依赖的问题的呢？</p>
+
+<!--more-->
+
+
+<p>写个简单的例子来试验一下看吧。
+定义两个文件：</p>
+
+<p>a.js</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'><span class="kd">var</span> <span class="nx">b</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">&#39;./b&#39;</span><span class="p">);</span>
+</span><span class='line'><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;a.js get b:&#39;</span> <span class="o">+</span> <span class="nx">b</span><span class="p">.</span><span class="nx">b</span><span class="p">);</span>
+</span><span class='line'><span class="nx">module</span><span class="p">.</span><span class="nx">exports</span><span class="p">.</span><span class="nx">a</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>b.js</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'><span class="kd">var</span> <span class="nx">a</span> <span class="o">=</span> <span class="nx">require</span><span class="p">(</span><span class="s1">&#39;./a&#39;</span><span class="p">);</span>
+</span><span class='line'><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;b.js get a:&#39;</span> <span class="o">+</span> <span class="nx">a</span><span class="p">.</span><span class="nx">a</span><span class="p">);</span>
+</span><span class='line'><span class="nx">module</span><span class="p">.</span><span class="nx">exports</span><span class="p">.</span><span class="nx">b</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>执行</p>
+
+<pre>
+node a.js
+</pre>
+
+
+<p>输出的结果是</p>
+
+<pre>
+b.js get a:undefined
+a.js get b:2
+</pre>
+
+
+<p>从打印的轨迹上来看，代码执行的流程大致如下：</p>
+
+<pre>
+a.js:                               b.js:
+var b = require('./b');
+                                    var a = require('./a'); // a = {}
+                                    console.log('b.js get a:' + a.a);
+                                    module.exports.b = 2;
+// b = {b: 2}
+console.log('a.js get b:' + b.b);
+module.exports.a = 1;
+</pre>
+
+
+<p>node的加载过程，可以在lib/module.js文件中找到。与这个过程相关的代码主要集中在Module._load方法里。可以看到，node会为每个新加载的文件创建一个Module对象（假设为a），这个就是我们在a.js代码中看到的module了。在创建a之后，node会先将a放到cache中，然后再对它进行加载操作。也就是说，如果在加载a的过程中，有其他的代码（假设为b）require a.js的话，那么b可以从cache中直接取到a的module，从而不会引起重复加载的死循环。但带来的代价就是在load过程中，b看到的是不完整的a，也就是为什么前面打印undefined的原因。</p>
+
+<p>Module的构造函数</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'><span class="kd">function</span> <span class="nx">Module</span><span class="p">(</span><span class="nx">id</span><span class="p">,</span> <span class="nx">parent</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>  <span class="k">this</span><span class="p">.</span><span class="nx">id</span> <span class="o">=</span> <span class="nx">id</span><span class="p">;</span>
+</span><span class='line'>  <span class="k">this</span><span class="p">.</span><span class="nx">exports</span> <span class="o">=</span> <span class="p">{};</span>
+</span><span class='line'>  <span class="k">this</span><span class="p">.</span><span class="nx">parent</span> <span class="o">=</span> <span class="nx">parent</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="k">this</span><span class="p">.</span><span class="nx">filename</span> <span class="o">=</span> <span class="kc">null</span><span class="p">;</span>
+</span><span class='line'>  <span class="k">this</span><span class="p">.</span><span class="nx">loaded</span> <span class="o">=</span> <span class="kc">false</span><span class="p">;</span>
+</span><span class='line'>  <span class="k">this</span><span class="p">.</span><span class="nx">exited</span> <span class="o">=</span> <span class="kc">false</span><span class="p">;</span>
+</span><span class='line'>  <span class="k">this</span><span class="p">.</span><span class="nx">children</span> <span class="o">=</span> <span class="p">[];</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Module._load方法</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+</pre></td><td class='code'><pre><code class='javascript'><span class='line'><span class="nx">Module</span><span class="p">.</span><span class="nx">_load</span> <span class="o">=</span> <span class="kd">function</span><span class="p">(</span><span class="nx">request</span><span class="p">,</span> <span class="nx">parent</span><span class="p">,</span> <span class="nx">isMain</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>  <span class="c1">//...</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="kd">var</span> <span class="nx">module</span> <span class="o">=</span> <span class="k">new</span> <span class="nx">Module</span><span class="p">(</span><span class="nx">id</span><span class="p">,</span> <span class="nx">parent</span><span class="p">);</span><span class="o">&lt;</span><span class="err">/p&gt;</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">//...</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="nx">Module</span><span class="p">.</span><span class="nx">_cache</span><span class="p">[</span><span class="nx">filename</span><span class="p">]</span> <span class="o">=</span> <span class="nx">module</span><span class="p">;</span>
+</span><span class='line'>  <span class="k">try</span> <span class="p">{</span>
+</span><span class='line'>      <span class="nx">module</span><span class="p">.</span><span class="nx">load</span><span class="p">(</span><span class="nx">filename</span><span class="p">);</span>
+</span><span class='line'>  <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nx">err</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>  <span class="k">delete</span> <span class="nx">Module</span><span class="p">.</span><span class="nx">_cache</span><span class="p">[</span><span class="nx">filename</span><span class="p">];</span>
+</span><span class='line'>      <span class="k">throw</span> <span class="nx">err</span><span class="p">;</span>
+</span><span class='line'>  <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="k">return</span> <span class="nx">module</span><span class="p">.</span><span class="nx">exports</span><span class="p">;</span>
+</span><span class='line'><span class="p">};</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>这个看似简单粗暴的处理手法，但实际上是node作者权衡各方面因素的结果。我们敬爱的npm作者issacs强调说了，这不是bug，而且近期内不会做什么改变。当然，issacs也给出了一些规避这个陷阱的建议（具体可以参考后面给的链接[1]）。我总结了一下，主要有两点：一个是在造成循环依赖的require之前把需要的东西exports出去;另一个是不要在load过程中操作未完成的模块。</p>
+
+<p>所以上面的例子的一种处理方法就是把各自的exports语句放到require语句前面，然后再运行，可以看到打印了正确的值。</p>
+
+<p>从前面的分析来看，循环依赖的陷阱出现的条件比较苛刻：一个是循环依赖，另一个是在load期间调用未加载完成的对象。所以大家平常不怎么会遇到。但我之前就曾华丽丽的邂逅了这个陷阱，在这里拿出来当一下反面教材。。。</p>
+
+<p>场景简化后大致如下：我有一堆service，每一个service负责消费某一类消息，并且可能会产生新的消息给其他service消费。从消息传递上来看，并没有产生循环依赖。但我为了解耦，定义了一个消息中心center的角色出来进行消息分发。center主要是维护一个type->service的map来路由消息，这样center就得把所有的service加载进来，于是产生了center->service的依赖。另一面，每个service又需要通过center来分发它们新产生的消息，于是又出现了service->center的依赖，循环依赖就这么出来了。刚好在service加载的过程中，又调用了center的一个方法，就发生了undefined的错误。</p>
+
+<p>这个问题查清楚原因以后，解决起来并不困难。</p>
+
+<p>一种方法就是按前面的方法，在代码层面上规避循环依赖的陷阱;</p>
+
+<p>另外也可以在设计的层面上彻底避免循环依赖的出现。我的场景之所以出现循环依赖，是因为center和service都需要知道对方的存在，即 center <--> service。如果采用依赖注入的方式，则可以切断这种直接依赖，类似于center <- container -> service。即加入一个container角色，把center和service都先加载进来，然后再用IOC的方法把依赖关系建立好。这样center和service都无须知道对方具体的文件所在了，也就不会循环的require对方了。</p>
+
+<p>总的来说，循环依赖的陷阱并不大容易出现，但一旦出现了，在实际的代码中也许还真不好定位。它的存在给我们提了个醒，注意你工程中的依赖关系。哪天node对你抱怨，一个你明明已经exports了的方法undefined，我们就该提醒一下自己：哦，也许是它来了：）</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[RedDwarf服务器数据模块分析]]></title>
+    <link href="http://codingcat.net/blog/2011/12/03/reddwarf-data-model-analytics/"/>
+    <updated>2011-12-03T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2011/12/03/reddwarf-data-model-analytics</id>
+    <content type="html"><![CDATA[<p>这段时间在分析RedDwarf服务器的代码，以下简称RD。RD最吸引我的地方就是水平扩展的能力了。一个游戏服务器，进行水平扩展，不可避免的一个问题就是分布式数据访问，即不同的服务器节点之间的数据共享问题。如：一个游戏服务器节点上的玩家要于另外一个节点上的玩家进行交互，中间的数据如何保证事务性，延时如何满足需求等。</p>
+
+<!--more-->
+
+
+<h2>RedDwarf的数据层的工作原理</h2>
+
+<p>RD将数据共享的重任委托给了一个强大的数据层。RD将需要共享的对象定义成ManagedObject（以下简称MO）。MO可以通过DataManager提供的接口持久化到统一的数据层，各个服务器节点再通过统一的数据层来访问共享对象。</p>
+
+<p>RD的数据服务器层简单的来看可以分为三层。DataManager是一个接口，具体实现实际是DataServiceImpl。所以三层结构关系主要如下：DataService -> DataStore ->DB。</p>
+
+<ul>
+<li><p>DataService主要为开发者提供了数据层的操作接口;</p></li>
+<li><p>DataStore则为中间层，主要屏蔽主从节点的差异以及底层数据库实现的差异;</p></li>
+<li><p>DB层负责与具体的数据库进行交互，目前主要有两种实现BDB和JE。在目前RD版本中，只有一个中心节点负责运行数据库，其他的从属节点实际上都是通过远程调用委托中心节点进行数据库操作。</p></li>
+</ul>
+
+
+<p>RD在多节点模式下运行时，有一个coreServer的中心节点需要首先起起来。coreServer的一项重要任务就是启动DataStoreImpl，后者将建立中心数据库（默认为BDB），并启动一个DataStoreServer实例，将代理DataStore的远程接口暴露出去。而之后的附属节点appServer启动之后，会建立一个DataStoreClient的实例来根据配置文件连接中心节点的DataStoreServer。DataClientClient实现了DataStore接口，所以它实际上充当的是DataStore的角色，将本节点的DataService的请求转交给中心节点的DataStoreServer。</p>
+
+<p>就是通过这样的结构，RD将所有从节点的数据请求都转移到了中心节点上，再由中心节点进行统一的事务调度，避免了分布式事务。</p>
+
+<h2>中心节点的事务</h2>
+
+<p>那么，在中心节点里，RD又是怎么处理数据库事务的呢？</p>
+
+<p>在讲这个之前，需要先讲一下ManagedObject的原理。ManagedObject是一个标记接口，跟Serializable一样。RD要求所有MO都实现ManagedObject接口，同时也要实现Serializable接口，因为MO最终需要序列化再存到数据库里的。</p>
+
+<p>每一个MO，在DataService内部实际上会有一个ManagedObjectReference（以下简称MOR）实例与之对应（无论是createReference和getBinding操作获得）。MOR主要维护的是objectId（即oid）到实际的java object的映射关系，底层数据库存的其实也就是oid->object的key/value对。MOR内部也会缓存一个与它关联的oid->object的映射。只有第一次调MOR的get方法时，才会真正到数据库里去取object的数据并反序列化，并把结果缓存到MOR内部。之后的所有get操作，都会从缓存里取，以提高速度和降低数据库负担。这就相当于本地有了个缓存。</p>
+
+<p>那RD怎么保证这个缓存和DB的一致性呢？即如果别的节点改变了MO的内容，当前节点怎么得知呢？这也就是前面提到的数据库事务的问题了。</p>
+
+<p>RD很聪明，把这个艰巨的任务交给了底层的DB。RD底层依赖的是BDB和JE数据库，它采用的默认锁模式是，READ_COMMITED=false和READ_UNCOMMITED（具体可以参考<a href="http://docs.oracle.com/cd/E17277_02/html/java/com/sleepycat/je/LockMode.html">BDB LockMode</a>和BdbEnvironment的构造函数）。简单的来说，RD对底层的DB的读操作会hold住该数据的一个读锁，直至事务结束。后面其他的事务如果也申请读锁是可以的，但申请写锁，则需要等待读事务结束后才能继续或者抛出TimeOut异常。从而保证了数据的事务性访问。我们所熟悉的DataManager的MarkForUpdate方法，实际上也是向数据库申请了一个写锁，直至事务结束后释放。</p>
+
+<p>这样带来的一个问题就是，热门的数据可能会有多个事务竞争，产生瓶颈。不过RD的模型本来就建议采用短事务，默认事务时长是100ms以内，数据访问冲突的超时时间是事务超时时间的1/10,所以一般的游戏，除了FPS或即时的MMORPG，应该还是可以满足需求的。</p>
+
+<h2>代码实验</h2>
+
+<p>说了那么多，都是从代码里看的，木得实际依据，为了证实我们的猜测，上点代码吧。</p>
+
+<p>测试环境，两台RD服务器节点（一个coreServer和一个appServer）。</p>
+
+<p>coreServer配置app.properties</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">name</span><span class="o">=</span><span class="n">Hello</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">listener</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">Hello</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">root</span><span class="o">=</span><span class="n">data</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">services</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">MyServiceImpl</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">txn</span><span class="o">.</span><span class="na">timeout</span><span class="o">=</span><span class="mi">300000</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">node</span><span class="o">.</span><span class="na">type</span><span class="o">=</span><span class="n">coreServerNode</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">server</span><span class="o">.</span><span class="na">host</span><span class="o">=</span><span class="n">localhost</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>appServer配置app.properties</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">name</span><span class="o">=</span><span class="n">Hello1</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">listener</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">Hello</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">root</span><span class="o">=</span><span class="n">data</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">services</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">MyServiceImpl</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">txn</span><span class="o">.</span><span class="na">timeout</span><span class="o">=</span><span class="mi">300000</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">node</span><span class="o">.</span><span class="na">type</span><span class="o">=</span><span class="n">appNode</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">server</span><span class="o">.</span><span class="na">host</span><span class="o">=</span><span class="n">localhost</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>为了展现访问冲突，有个事务需要中途sleep一阵子，所以把事务超时设为300s。</p>
+
+<p>在coreServer的MyServiceImpl的doReady方法里加入以下代码</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="k">this</span><span class="o">.</span><span class="na">scheduler</span><span class="o">.</span><span class="na">scheduleTask</span><span class="o">(</span><span class="k">new</span> <span class="n">AbstractKernelRunnable</span><span class="o">(</span><span class="n">name</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>  <span class="nd">@Override</span>
+</span><span class='line'>  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+</span><span class='line'>      <span class="n">String</span> <span class="n">name</span> <span class="o">=</span> <span class="s">&quot;chang&quot;</span><span class="o">;</span>
+</span><span class='line'>
+</span><span class='line'>      <span class="n">MyData</span> <span class="n">bd</span> <span class="o">=</span> <span class="o">(</span><span class="n">MyData</span><span class="o">)</span><span class="n">txnProxy</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="n">DataService</span><span class="o">.</span><span class="na">class</span><span class="o">).</span><span class="na">getBinding</span><span class="o">(</span><span class="n">name</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">()</span> <span class="o">+</span> <span class="s">&quot; before:&quot;</span> <span class="o">+</span> <span class="n">bd</span><span class="o">.</span><span class="na">getA</span><span class="o">());</span>
+</span><span class='line'>      <span class="n">Thread</span><span class="o">.</span><span class="na">sleep</span><span class="o">(</span><span class="mi">10000</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">MyData</span> <span class="n">ad</span> <span class="o">=</span> <span class="o">(</span><span class="n">MyData</span><span class="o">)</span><span class="n">txnProxy</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="n">DataService</span><span class="o">.</span><span class="na">class</span><span class="o">).</span><span class="na">getBinding</span><span class="o">(</span><span class="n">name</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">()</span> <span class="o">+</span> <span class="s">&quot; after:&quot;</span> <span class="o">+</span> <span class="n">ad</span><span class="o">.</span><span class="na">getA</span><span class="o">());</span>
+</span><span class='line'>  <span class="o">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="o">},</span> <span class="k">this</span><span class="o">.</span><span class="na">txnProxy</span><span class="o">.</span><span class="na">getCurrentOwner</span><span class="o">());</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>主要做的事情就是先读一个事先绑定好了的对象，观察它的值。然后休眠10s，再取一遍，观察值有没有变。</p>
+
+<p>appServer的MyServiceImpl的doReady方法里加入以下代码</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="k">this</span><span class="o">.</span><span class="na">scheduler</span><span class="o">.</span><span class="na">scheduleTask</span><span class="o">(</span><span class="k">new</span> <span class="n">AbstractKernelRunnable</span><span class="o">(</span><span class="n">name</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>  <span class="nd">@Override</span>
+</span><span class='line'>  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+</span><span class='line'>      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">()</span> <span class="o">+</span> <span class="s">&quot; begin.&quot;</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">String</span> <span class="n">name</span> <span class="o">=</span> <span class="s">&quot;chang1&quot;</span><span class="o">;</span>
+</span><span class='line'>      <span class="n">MyData</span> <span class="n">data</span> <span class="o">=</span> <span class="o">(</span><span class="n">MyData</span><span class="o">)</span><span class="n">txnProxy</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="n">DataService</span><span class="o">.</span><span class="na">class</span><span class="o">).</span><span class="na">getBinding</span><span class="o">(</span><span class="n">name</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">txnProxy</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="n">DataService</span><span class="o">.</span><span class="na">class</span><span class="o">).</span><span class="na">markForUpdate</span><span class="o">(</span><span class="n">data</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">data</span><span class="o">.</span><span class="na">setA</span><span class="o">(</span><span class="n">data</span><span class="o">.</span><span class="na">getA</span><span class="o">()</span> <span class="o">+</span> <span class="mi">1</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">()</span> <span class="o">+</span> <span class="s">&quot; finish.&quot;</span><span class="o">);</span>
+</span><span class='line'>  <span class="o">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="o">},</span> <span class="k">this</span><span class="o">.</span><span class="na">txnProxy</span><span class="o">.</span><span class="na">getCurrentOwner</span><span class="o">());</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>主要做的事情是取同一个对象，然后markForUpdate一下，然后修改对象的字段。
+运行后，从输出结果的时间序列上看，appServer的事务会一直被堵着，直到coreServer的after输出完毕后，才能接着往下执行（这里因为加长了超时时间，所以不会冲突超时）。</p>
+
+<p>那如果不做markForUpdate，直接修改会怎么样呢？其实效果也一样的，RD默认开启了自动检测修改，会将没有markForUpdate的MO设为MAYBE_MODIFIED状态，在事务提交时，会检测该MO是否有被修改过（主要原理是，get的时候做一下序列化，commit的时候再做一下序列化，两次序列化的结果进行比较看是否有改变），如果有改变的话就提交数据库，这时就会涉及到数据库写操作，一样会被阻塞住。
+那么把appServer的</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="n">txnProxy</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="n">DataService</span><span class="o">.</span><span class="na">class</span><span class="o">).</span><span class="na">markForUpdate</span><span class="o">(</span><span class="n">data</span><span class="o">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>语句去掉。</p>
+
+<p>执行的结果可以看到appServer上的begin和finish都在coreServer的after之前打印了，难道是绕过了RD的事务了？其实不是的，因为appServer上的begin和finish都是在transaction task的run方法里的，而数据提交是在transaction task的run方法执行完成后进行的，所以当finish打印时，实际上还没开始MO的flush，所以还不会堵塞。为了验证这一点，可以在coreServer上的DataStoreServerImpl的</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="kd">public</span> <span class="kt">void</span> <span class="nf">setObjects</span><span class="o">(</span><span class="kt">long</span> <span class="n">tid</span><span class="o">,</span> <span class="kt">long</span><span class="o">[]</span> <span class="n">oids</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[][]</span> <span class="n">dataArray</span><span class="o">)</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>方法里，</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="n">store</span><span class="o">.</span><span class="na">setObjects</span><span class="o">(</span><span class="n">txn</span><span class="o">,</span> <span class="n">oids</span><span class="o">,</span> <span class="n">dataArray</span><span class="o">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>语句前后加上日志，打印一下设置相应oid的请求的开始和结束时间，就可以直到，set请求其实是一直阻塞着，直到coreServer的事务完成后，才能往下执行的。</p>
+
+<h2>总结</h2>
+
+<p>简单的看，RedDwarf分布式事务主要分三步来实现。第一步先将所有节点的操作请求集中到中心节点，将原来并发的请求串行化。第二步则是为请求分配读写锁，授权给各个节点。第三部，各个节点按读写约定执行事务逻辑，commit后同步到中心节点，完成事务。使用的前提是所有事务都是短事务，否则将会影响后面事务的执行。</p>
 ]]></content>
   </entry>
   
