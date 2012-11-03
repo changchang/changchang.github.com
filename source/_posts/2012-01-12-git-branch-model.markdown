@@ -3,7 +3,7 @@ layout: post
 title: '[转]一个成功的Git分支模型'
 categories:
 - svn/git
-tags: []
+tags: [git]
 published: true
 comments: true
 description: 几种比较成熟的git分支管理模型

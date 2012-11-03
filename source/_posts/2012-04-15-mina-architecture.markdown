@@ -32,7 +32,7 @@ Mina的底层依赖的主要是Java NIO库，上层提供的是基于事件的�
 
 Mina的设计理念之一就是业务代码和数据包处理代码分离，业务代码只专注于业务逻辑，其他的逻辑如：数据包的解析，封装，过滤等则交由IoFilterChain来处理。IoFilterChain可以看成是Mina处理流程的扩展点。这样的划分使得结构更加清晰，代码分工更明确。开发者通过往Chain中添加IoFilter，来增强处理流程，而不会影响后面的业务逻辑代码。
 
-##oHandler
+##IoHandler
 
 IoHandler是实现业务逻辑的地方，需要有开发者自己来实现这个接口。IoHandler可以看成是Mina处理流程的终点，每个IoService都需要指定一个IoHandler。
 
