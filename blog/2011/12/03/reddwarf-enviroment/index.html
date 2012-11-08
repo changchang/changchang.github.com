@@ -5,12 +5,13 @@
 <!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
 <head>
   <meta charset="utf-8">
-  <title>从wordpress到octopress - Little Cat in Big World</title>
+  <title>RedDwarf服务器测试环境搭建 - Little Cat in Big World</title>
   <meta name="author" content="changchang">
 
   
-  <meta name="description" content="Little Cat in Big World, technology blog recording my coding life.">
-  <meta name="keywords" content="Technology blog, Coding, Little Cat in Big World">
+  <meta name="description" content="RedDwarf游戏服务器开发环境配置">
+  <meta name="keywords" content="RedDwarf, game server, configure">
+  
 
   <!-- http://t.co/dKP3o1e -->
   <meta name="HandheldFriendly" content="True">
@@ -18,7 +19,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   
-  <link rel="canonical" href="http://codingcat.net/blog/2012/10/08/from-wordpress-to-octopress/">
+  <link rel="canonical" href="http://codingcat.net/blog/2011/12/03/reddwarf-enviroment/">
   <link href="/favicon.png" rel="icon">
   <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
   <link href='http://fonts.googleapis.com/css?family=Lato:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
@@ -68,7 +69,7 @@
   
   <header>
     
-      <h1 class="entry-title">从wordpress到octopress</h1>
+      <h1 class="entry-title">RedDwarf服务器测试环境搭建</h1>
     
     
       <p class="meta">
@@ -84,7 +85,7 @@
   
 
 
-<time datetime="2012-10-08T00:28:00+08:00" pubdate data-updated="true">Oct 8<span>th</span>, 2012</time>
+<time datetime="2011-12-03T00:00:00+08:00" pubdate data-updated="true">Dec 3<span>rd</span>, 2011</time>
         
          | <a href="#disqus_thread">Comments</a>
         
@@ -93,52 +94,49 @@
   </header>
 
 
-<div class="entry-content"><h1>前记</h1>
+<div class="entry-content"><p>分析RD服务器代码时，经常需要跑一跑，以验证分析的结果和猜测。在eclipse下搭了这个环境。简单点，直接上图吧，有图 有真相，说明基本上也能省了。</p>
 
-<p>兜兜转转，终于还是受不了wordpress的繁杂控制后台和二逼编辑器了，下定决心搬到octopress来了。相比wp，op更加清爽，更容易支配，更符合我的口味吧。比较喜欢op的组织结构，每篇文章都是一个文本文件，支持markdown格式，方便编辑和控制，好过面对冷冰冰的数据库。于是有了这个折腾之旅。</p>
-
-<!-- more -->
+<!--more-->
 
 
-<h1>octopress安装</h1>
-
-<p>octopress官网的文档写的够仔细了，照着倒腾很快就能让博客跑起来了，基本没什么问题。我是在本机搭的博客，采用的是ssh + Rsync。要发布出去的话，可以考虑github。</p>
-
-<h1>文章迁移</h1>
-
-<p>搬窝首先要考虑的是以前的家当怎么处理。虽然说开博至今没憋出什么像样的文章，但终究是自己业余时间的一点心血，能搬就搬过来吧。而且，像我这样从wp折腾到op的人应该也不少，靠谱的方案应该也不少。</p>
-
-<p>果不其然，google了一把，发现了不少成功案例。我采用的是<a href="http://blog.yorkxin.org/2011/11/26/import-from-wpcom-to-octopress/">yorkxin</a>同学的方案，迁移脚本的代码在<a href="https://gist.github.com/1394128">这里</a>。下面是主要的操作流程：</p>
-
-<ul>
-<li>首先先从wp的控制后台导出wp的备份文件，保存为wordpress.xml，放到op的根目录下。</li>
-<li>将上面gist里的脚本保存到op项目下的_import/wordpressdotcom.rb文件中。</li>
-<li>在op根目录下执行</li>
-</ul>
 
 
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>ruby -r "./_import/wordpressdotcom.rb" -e "Jekyll::WordpressDotCom.process"</span></code></pre></td></tr></table></div></figure>
+<center>
+    <img src="http://i.6.cn/cvbnm/3a/c3/37/541e0e3c62bd982ab65269db701d0ded.jpg" title="sgs1"/>
+</center>
 
 
-<p>这样就完成文章的迁移啦。</p>
+<h3>入口代码设置</h3>
 
-<p>转移后有的地方格式还是不大对的，先把前面几篇文章放上来吧，后面的慢慢调好了以后再说～</p>
+<center>
+    <img src="http://i.6.cn/cvbnm/21/9a/4a/532700adec8777f03d185941956c7270.jpg" title="sgs2" />
+</center>
 
-<h1>加入评论</h1>
 
-<p>op中没有自带评论功能，如果需要可以通过<a href="http://disqus.com/">DISQUS</a>来提供。过程也很简单。</p>
+<h3>参数设置</h3>
 
-<p>首先注册一个DISQUS帐号。剩下的就交给op吧，因为op本来就支持DISQUS。
-在_config.yml配置文件找到disqus的配置，填上你的disqus_short_name，再重新生成一下博客文章，发布，然后就可以看到你的文章后面加入了非常漂亮的评论模块啦，是不是很简单呢。</p>
+<p>代码入口是com.sun.sgs.impl.kernel.Kernel，配置文件主要在app.properties，指向它就可以了，bdb运行环境需要的native包需要指明一下。如果用的是0.10.2的话，用的bdb的je（java edition）版本，native也免了。可以加个sgs-logging.properties文件来设一下日志level，都可以从SGS_HOME/conf目录下拷的。</p>
 
-<h1>加入图片</h1>
+<p>app.properties文件内容</p>
 
-<p>op也没有上传图片的功能。这个也可以寻找一个第三方的图片服务就解决了。以前的博客图片大多是在本机上的，如果要放到网上，还得慢慢倒腾。</p>
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">name</span><span class="o">=</span><span class="n">Hello</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">listener</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">Hello</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">root</span><span class="o">=</span><span class="n">data</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">services</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">MyServiceImpl</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">txn</span><span class="o">.</span><span class="na">timeout</span><span class="o">=</span><span class="mi">300000</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">node</span><span class="o">.</span><span class="na">type</span><span class="o">=</span><span class="n">coreServerNode</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">server</span><span class="o">.</span><span class="na">host</span><span class="o">=</span><span class="n">localhost</span>
+</span></code></pre></td></tr></table></div></figure>
 
-<h1>美化</h1>
 
-<p>op的样式感觉比以前wp上的要大气许多，现在还没来得及好好倒腾，后面再一步步把把小博美化美化吧。以后迁到github上也很方便，op本身就是一个git管理的工程～:)</p>
+<p>后面两个如果是单节点的模式的话可以不要。具体可以参考<a href="http://www.reddwarfserver.org/javadoc/current/server-all/com/sun/sgs/impl/kernel/doc-files/config-properties.html">config-properties</a>。</p>
 </div>
 
 
@@ -161,12 +159,12 @@
   
 
 
-<time datetime="2012-10-08T00:28:00+08:00" pubdate data-updated="true">Oct 8<span>th</span>, 2012</time>
+<time datetime="2011-12-03T00:00:00+08:00" pubdate data-updated="true">Dec 3<span>rd</span>, 2011</time>
       
 
 <span class="categories">
   
-    <a class='category' href='/blog/categories/心情/'>心情</a>
+    <a class='category' href='/blog/categories/game/'>Game</a>, <a class='category' href='/blog/categories/java/'>Java</a>
   
 </span>
 
@@ -182,10 +180,10 @@
     
     <p class="meta">
       
-        <a class="basic-alignment left" href="/blog/2012/05/18/connect-framework/" title="Previous Post: connect源码分析--基础架构">&laquo; connect源码分析--基础架构</a>
+        <a class="basic-alignment left" href="/blog/2011/12/03/reddwarf-data-model-analytics/" title="Previous Post: RedDwarf服务器数据模块分析">&laquo; RedDwarf服务器数据模块分析</a>
       
       
-        <a class="basic-alignment right" href="/blog/2012/10/09/libev-framework/" title="Next Post: libev源码分析 -- 整体设计">libev源码分析 -- 整体设计 &raquo;</a>
+        <a class="basic-alignment right" href="/blog/2011/12/30/trap-for-circle-dependencies-of-node-js/" title="Next Post: node.js的循环依赖">node.js的循环依赖 &raquo;</a>
       
     </p>
   </footer>
@@ -255,8 +253,8 @@
       
         
         // var disqus_developer = 1;
-        var disqus_identifier = 'http://codingcat.net/blog/2012/10/08/from-wordpress-to-octopress/';
-        var disqus_url = 'http://codingcat.net/blog/2012/10/08/from-wordpress-to-octopress/';
+        var disqus_identifier = 'http://codingcat.net/blog/2011/12/03/reddwarf-enviroment/';
+        var disqus_url = 'http://codingcat.net/blog/2011/12/03/reddwarf-enviroment/';
         var disqus_script = 'embed.js';
       
     (function () {

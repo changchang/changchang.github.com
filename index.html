@@ -71,6 +71,49 @@
       
   <header>
     
+      <h1 class="entry-title"><a href="/blog/2012/11/01/libeio-source-analytics/">Libeio源码浅析</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2012-11-01T18:31:00+08:00" pubdate data-updated="true">Nov 1<span>st</span>, 2012</time>
+        
+         | <a href="/blog/2012/11/01/libeio-source-analytics/#disqus_thread">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p><a href="http://software.schmorp.de/pkg/libeio.html">libeio</a>是用C开发的高效异步IO库，填补了普通文件没有异步接口的空白。它的作者也是Marc Lehmann，所以它的整体设计风格和libev还是有几分相似的。本文主要记录一下近期对libeio源码分析的心得，作为分析libuv的基础。关于linux下另外一些aio的实现方案，如glibc和kernel native aio，以及libeio背后的一些八卦等，在<a href="http://cnodejs.org/topic/4f16442ccae1f4aa270010a7">这篇文章</a>和<a href="http://hi.baidu.com/_kouu/item/2b3cfecd49c17d10515058d9">这篇文章</a>都有比较深入的分析，这里就不赘述了。</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2012/11/01/libeio-source-analytics/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+    
       <h1 class="entry-title"><a href="/blog/2012/10/20/libev-watchers/">Libev源码分析 &#8211; 常用watcher</a></h1>
     
     
@@ -472,50 +515,9 @@
 
     </article>
   
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2011/12/03/reddwarf-data-model-analytics/">RedDwarf服务器数据模块分析</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2011-12-03T00:00:00+08:00" pubdate data-updated="true">Dec 3<span>rd</span>, 2011</time>
-        
-         | <a href="/blog/2011/12/03/reddwarf-data-model-analytics/#disqus_thread">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>这段时间在分析RedDwarf服务器的代码，以下简称RD。RD最吸引我的地方就是水平扩展的能力了。一个游戏服务器，进行水平扩展，不可避免的一个问题就是分布式数据访问，即不同的服务器节点之间的数据共享问题。如：一个游戏服务器节点上的玩家要于另外一个节点上的玩家进行交互，中间的数据如何保证事务性，延时如何满足需求等。</p>
-
-</div>
-  
-  
-    <footer>
-      <a rel="full-article" href="/blog/2011/12/03/reddwarf-data-model-analytics/">Read on &rarr;</a>
-    </footer>
-  
-
-
-    </article>
-  
   <div class="pagination">
+    
+      <a class="prev" href="/blog/page/2/">&larr; Older</a>
     
     <a href="/blog/archives">Blog Archives</a>
     
@@ -526,6 +528,10 @@
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2012/11/01/libeio-source-analytics/">libeio源码浅析</a>
+      </li>
     
       <li class="post">
         <a href="/blog/2012/10/20/libev-watchers/">libev源码分析 &#8211; 常用watcher</a>
@@ -543,10 +549,6 @@
         <a href="/blog/2012/05/18/connect-framework/">connect源码分析&#8211;基础架构</a>
       </li>
     
-      <li class="post">
-        <a href="/blog/2012/04/15/mina-architecture/">Mina工作原理分析</a>
-      </li>
-    
   </ul>
 </section>
 
@@ -556,7 +558,7 @@
 
 <section>
   <h1>Categories</h1>
-    <ul id="category-list"><li><a href='/blog/categories/c-c-'>C/C++ (2)</a></li><li><a href='/blog/categories/game'>Game (1)</a></li><li><a href='/blog/categories/java'>Java (3)</a></li><li><a href='/blog/categories/nodejs'>nodejs (4)</a></li><li><a href='/blog/categories/svn-git'>svn/git (1)</a></li><li><a href='/blog/categories/心情'>心情 (1)</a></li></ul>
+    <ul id="category-list"><li><a href='/blog/categories/c-c-'>C/C++ (3)</a></li><li><a href='/blog/categories/game'>Game (2)</a></li><li><a href='/blog/categories/java'>Java (4)</a></li><li><a href='/blog/categories/nodejs'>nodejs (4)</a></li><li><a href='/blog/categories/svn-git'>svn/git (1)</a></li><li><a href='/blog/categories/心情'>心情 (1)</a></li></ul>
 </section>
   
 </aside>

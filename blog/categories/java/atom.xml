@@ -4,7 +4,7 @@
   <title><![CDATA[Category: Java | Little Cat in Big World]]></title>
   <link href="http://codingcat.net/blog/categories/java/atom.xml" rel="self"/>
   <link href="http://codingcat.net/"/>
-  <updated>2012-11-03T11:27:06+08:00</updated>
+  <updated>2012-11-08T18:55:20+08:00</updated>
   <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
@@ -239,6 +239,53 @@ synchronized (mutex)
 <p>最后回头看看，在node的异步处理的模式下，容器对回调的控制较弱。一般的形式通过传递回调函数，由开发者代码调用来告知容器处理流程的真正结束，connect，nodeunit等都是用类似的手法来处理。如果回调函数中因为未捕获异常而退出，则后续流程会因此而丢失。做为容器来说，也有可能因为用户的不良代码，忘了调用回调函数而丢掉后面的流程。</p>
 
 <p>暂时也没想到比较好的解决办法，目前的想法是设置回调超时。在每个需要用户代码调用回调的接口添加一个超时记录，用一个类似bitmap的东西来维护reqId和超时记录的映射关系。如果用户代码在指定时间内调用回调函数，则根据reqId清空超时记录;否则对该次请求做超时处理。</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[RedDwarf服务器测试环境搭建]]></title>
+    <link href="http://codingcat.net/blog/2011/12/03/reddwarf-enviroment/"/>
+    <updated>2011-12-03T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2011/12/03/reddwarf-enviroment</id>
+    <content type="html"><![CDATA[<p>分析RD服务器代码时，经常需要跑一跑，以验证分析的结果和猜测。在eclipse下搭了这个环境。简单点，直接上图吧，有图 有真相，说明基本上也能省了。</p>
+
+<!--more-->
+
+
+
+
+<center>
+    <img src="http://i.6.cn/cvbnm/3a/c3/37/541e0e3c62bd982ab65269db701d0ded.jpg" title="sgs1"/>
+</center>
+
+
+<h3>入口代码设置</h3>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/21/9a/4a/532700adec8777f03d185941956c7270.jpg" title="sgs2" />
+</center>
+
+
+<h3>参数设置</h3>
+
+<p>代码入口是com.sun.sgs.impl.kernel.Kernel，配置文件主要在app.properties，指向它就可以了，bdb运行环境需要的native包需要指明一下。如果用的是0.10.2的话，用的bdb的je（java edition）版本，native也免了。可以加个sgs-logging.properties文件来设一下日志level，都可以从SGS_HOME/conf目录下拷的。</p>
+
+<p>app.properties文件内容</p>
+
+<p>```java</p>
+
+<pre><code>com.sun.sgs.app.name=Hello
+com.sun.sgs.app.listener=test.Hello
+com.sun.sgs.app.root=data
+com.sun.sgs.services=test.MyServiceImpl
+com.sun.sgs.txn.timeout=300000
+com.sun.sgs.node.type=coreServerNode
+com.sun.sgs.server.host=localhost
+</code></pre>
+
+<p>```</p>
+
+<p>后面两个如果是单节点的模式的话可以不要。具体可以参考<a href="http://www.reddwarfserver.org/javadoc/current/server-all/com/sun/sgs/impl/kernel/doc-files/config-properties.html">config-properties</a>。</p>
 ]]></content>
   </entry>
   
