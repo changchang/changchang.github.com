@@ -4,7 +4,7 @@
   <title><![CDATA[Little Cat in Big World]]></title>
   <link href="http://codingcat.net/atom.xml" rel="self"/>
   <link href="http://codingcat.net/"/>
-  <updated>2012-11-08T18:55:20+08:00</updated>
+  <updated>2012-11-09T11:42:52+08:00</updated>
   <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
@@ -106,7 +106,7 @@
 
 <h1>libeio工作原理</h1>
 
-<p>libeiotu主要是通过线程池来模拟异步操作，大致流程如下图所示：</p>
+<p>libeio主要是通过线程池来模拟异步操作，大致流程如下图所示：</p>
 
 <center>
     <img src="http://i.6.cn/cvbnm/dc/4b/1b/51f2c6bc78aaff156a5f09ee5c7dac65.png" title="libeio-arch" />
@@ -676,7 +676,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 
 <h1>总结</h1>
 
-<p>总的来看，libev的结构设计还是非常清晰。如果说，主循环ev_run是libev这棵大树的主干，那么功能强大，数量繁多的watcher就是这棵大树的树叶，而循环上下文ev_loop则是连接主干和树叶的树枝，它们的分工与职责是相当明确的。作为大树的主干，ev_run的代码是非常稳定和干净的，基本上不会掺杂外部开发者的逻辑代码进来。作为叶子的watcher，它的定位也非常明确：专注于自己的领域，只解决某一个类型的问题。不同的watcher以及watcher和主循环之间并没有太多的干扰和耦合，这也是libev能如此灵活扩展的原因。而中间的树枝ev_loop的作用也是不言而喻的，正式因为它在中间的调和，前面两位哥们才能活得这么有个性。</p>
+<p>总的来看，libev的结构设计还是非常清晰。如果说，主循环ev_run是libev这棵大树的主干，那么功能强大，数量繁多的watcher就是这棵大树的树叶，而循环上下文ev_loop则是连接主干和树叶的树枝，它们的分工与职责是相当明确的。作为大树的主干，ev_run的代码是非常稳定和干净的，基本上不会掺杂外部开发者的逻辑代码进来。作为叶子的watcher，它的定位也非常明确：专注于自己的领域，只解决某一个类型的问题。不同的watcher以及watcher和主循环之间并没有太多的干扰和耦合，这也是libev能如此灵活扩展的原因。而中间的树枝ev_loop的作用也是不言而喻的，正是因为它在中间的调和，前面两位哥们才能活得这么有个性。</p>
 
 <p>看到这里，libev的主体架构已经比较清楚了，但是似乎还没看到与性能相关的关键代码。与主干代码不一样，这些代码更多的是隐藏在实现具体逻辑的地方，也就是watcher之中的。虽然watcher的使用接口都比较相似，但是不同的watcher，底层的数据结构和处理策略还是不一样的。下面一篇文章我们就来探索一下libev中比较常用的几种watcher的设计与实现。</p>
 ]]></content>
@@ -1741,23 +1741,21 @@ module.exports.a = 1;
 <!--more-->
 
 
-
+<p>入口代码设置</p>
 
 <center>
     <img src="http://i.6.cn/cvbnm/3a/c3/37/541e0e3c62bd982ab65269db701d0ded.jpg" title="sgs1"/>
 </center>
 
 
-<h3>入口代码设置</h3>
+<p>参数设置</p>
 
 <center>
     <img src="http://i.6.cn/cvbnm/21/9a/4a/532700adec8777f03d185941956c7270.jpg" title="sgs2" />
 </center>
 
 
-<h3>参数设置</h3>
-
-<p>代码入口是com.sun.sgs.impl.kernel.Kernel，配置文件主要在app.properties，指向它就可以了，bdb运行环境需要的native包需要指明一下。如果用的是0.10.2的话，用的bdb的je（java edition）版本，native也免了。可以加个sgs-logging.properties文件来设一下日志level，都可以从SGS_HOME/conf目录下拷的。</p>
+<p>代码入口是com.sun.sgs.impl.kernel.Kernel，配置文件主要在app.properties，指向它就可以了，bdb运行环境依赖的native包需要指明一下。如果用的是0.10.2的话，用的bdb的je（java edition）版本，native也免了。可以加个sgs-logging.properties文件来设一下日志level，都可以从SGS_HOME/conf目录下拷的。</p>
 
 <p>app.properties文件内容</p>
 

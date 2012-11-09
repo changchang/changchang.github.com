@@ -4,7 +4,7 @@
   <title><![CDATA[Category: Java | Little Cat in Big World]]></title>
   <link href="http://codingcat.net/blog/categories/java/atom.xml" rel="self"/>
   <link href="http://codingcat.net/"/>
-  <updated>2012-11-08T18:55:20+08:00</updated>
+  <updated>2012-11-09T11:42:52+08:00</updated>
   <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
@@ -252,23 +252,21 @@ synchronized (mutex)
 <!--more-->
 
 
-
+<p>入口代码设置</p>
 
 <center>
     <img src="http://i.6.cn/cvbnm/3a/c3/37/541e0e3c62bd982ab65269db701d0ded.jpg" title="sgs1"/>
 </center>
 
 
-<h3>入口代码设置</h3>
+<p>参数设置</p>
 
 <center>
     <img src="http://i.6.cn/cvbnm/21/9a/4a/532700adec8777f03d185941956c7270.jpg" title="sgs2" />
 </center>
 
 
-<h3>参数设置</h3>
-
-<p>代码入口是com.sun.sgs.impl.kernel.Kernel，配置文件主要在app.properties，指向它就可以了，bdb运行环境需要的native包需要指明一下。如果用的是0.10.2的话，用的bdb的je（java edition）版本，native也免了。可以加个sgs-logging.properties文件来设一下日志level，都可以从SGS_HOME/conf目录下拷的。</p>
+<p>代码入口是com.sun.sgs.impl.kernel.Kernel，配置文件主要在app.properties，指向它就可以了，bdb运行环境依赖的native包需要指明一下。如果用的是0.10.2的话，用的bdb的je（java edition）版本，native也免了。可以加个sgs-logging.properties文件来设一下日志level，都可以从SGS_HOME/conf目录下拷的。</p>
 
 <p>app.properties文件内容</p>
 
