@@ -5,13 +5,12 @@
 <!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
 <head>
   <meta charset="utf-8">
-  <title>RedDwarf服务器测试环境搭建 - Little Cat in Big World</title>
+  <title>websocket的压缩 - Little Cat in Big World</title>
   <meta name="author" content="changchang">
 
   
-  <meta name="description" content="RedDwarf游戏服务器开发环境配置">
-  <meta name="keywords" content="RedDwarf, game server, configure">
-  
+  <meta name="description" content="Little Cat in Big World, technology blog recording my coding life.">
+  <meta name="keywords" content="Technology blog, Coding, Little Cat in Big World">
 
   <!-- http://t.co/dKP3o1e -->
   <meta name="HandheldFriendly" content="True">
@@ -19,7 +18,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   
-  <link rel="canonical" href="http://codingcat.net/blog/2011/12/03/reddwarf-enviroment/">
+  <link rel="canonical" href="http://codingcat.net/blog/2011/10/08/websocket-compress/">
   <link href="/favicon.png" rel="icon">
   <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
   <link href='http://fonts.googleapis.com/css?family=Lato:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
@@ -69,7 +68,7 @@
   
   <header>
     
-      <h1 class="entry-title">RedDwarf服务器测试环境搭建</h1>
+      <h1 class="entry-title">Websocket的压缩</h1>
     
     
       <p class="meta">
@@ -85,7 +84,7 @@
   
 
 
-<time datetime="2011-12-03T00:00:00+08:00" pubdate data-updated="true">Dec 3<span>rd</span>, 2011</time>
+<time datetime="2011-10-08T00:00:00+08:00" pubdate data-updated="true">Oct 8<span>th</span>, 2011</time>
         
          | <a href="#disqus_thread">Comments</a>
         
@@ -94,47 +93,35 @@
   </header>
 
 
-<div class="entry-content"><p>分析RD服务器代码时，经常需要跑一跑，以验证分析的结果和猜测。在eclipse下搭了这个环境。简单点，直接上图吧，有图 有真相，说明基本上也能省了。</p>
+<div class="entry-content"><p>websocket目前的版本只支持文本格式进行传输，预留有标志位供以后的版本扩展。而传输常常考虑的一个问题就是传输的效率。那么websocket是否跟http协议一样，能对传输的内容进行压缩来降低通讯所占用的带宽呢？</p>
 
 <!--more-->
 
 
-<p>入口代码设置</p>
+<p>从协议上看，websocket是支持压缩的。websockete里的压缩是以扩展的形式加进来的，参考：
+<a href="http://tools.ietf.org/html/draft-tyoshino-hybi-websocket-perframe-deflate-00">这里</a></p>
 
-<center>
-    <img src="http://i.6.cn/cvbnm/3a/c3/37/541e0e3c62bd982ab65269db701d0ded.jpg" title="sgs1"/>
-</center>
+<p>目前扩展只支持DEFLATE压缩，客户端和服务器端协商的过程也很简单，双方在握手阶段互发一个扩展头（客户端先发起）即可，然后后续所发的包的全部数据，包括header和body内容全部用DEFLATE算法进行压缩。（applies DEFLATE to everything including header octets such as opcode and payload length.）
+Sec-WebSocket-Extensions: deflate-application-data</p>
 
+<p>正如前面提到的，因为这个扩展的压缩会连header一起压缩，会导致一些代理无法直接解析header的信息，而需要先将整个数据解压。另外，websocket里客户端向服务器发的数据，需要先经过mark即用header里的marking-key对payload的字节进行异或，使包里数据尽量均匀，而这也将对DEFLATE压缩算法的效率造成影响。目前这个扩展争议还是比较大的。
+<a href="http://www.lenholgate.com/blog/2011/07/websockets---the-deflate-stream-extension-is-broken-and-badly-designed.html">参考</a></p>
 
-<p>参数设置</p>
+<p>不过目前websocket api也没有提供设置该参数的接口，支持的浏览器和服务器估计也不多吧。先记录下来，留待以后观察。</p>
 
-<center>
-    <img src="http://i.6.cn/cvbnm/21/9a/4a/532700adec8777f03d185941956c7270.jpg" title="sgs2" />
-</center>
+<p>&#8212;&#8212;&#8212;-2011-10-09更新
+上面的草案老了，今天找了个新的。</p>
 
+<p>websocket协议支持对传输内容进行压缩。压缩设置以extension的形式提供，目前仅定义了deflate压缩，需要浏览器和服务器的支持。如果浏览器支持，在websocket握手的时候会进行extension协商，最简单的形式就是添加协议头
+Sec-WebSocket-Extensions: deflate-frame
+如果服务器也支持则在响应中添加同样的协议头即可。
+之后传递的数据包的payload部分都经过deflate压缩。具体的协议内容参看<a href="http://tools.ietf.org/html/draft-tyoshino-hybi-websocket-perframe-deflate-04">这里</a></p>
 
-<p>代码入口是com.sun.sgs.impl.kernel.Kernel，配置文件主要在app.properties，指向它就可以了，bdb运行环境依赖的native包需要指明一下。如果用的是0.10.2的话，用的bdb的je（java edition）版本，native也免了。可以加个sgs-logging.properties文件来设一下日志level，都可以从SGS_HOME/conf目录下拷的。</p>
+<p>websocket协议也内置了一个压缩的扩展deflate-stream，具体可以参考<a href="http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-10#section-9.2.1">这里</a> 。但这个扩展存在不少争议，如：它会连同协议的头也一起压缩，导致中间的代理需要先解压然后才能解析websocket协议的头信息。参考WebSockets - <a href="http://www.lenholgate.com/blog/2011/07/websockets---the-deflate-stream-extension-is-broken-and-badly-designed.html">The deflate-stream extension is broken and badly designed</a></p>
 
-<p>app.properties文件内容</p>
+<p>目前貌似还没有浏览器支持deflate-frame。对于deflate-stream，主要观察了一下firefox和chrome。firefox6支持deflate-stream压缩扩展，可以在about:config里network.websocket.extensions.stream-deflate设置。截包来看，能看到相应的扩展头。chrome 14.0.835.186没找到配置的地方，截包看默认没加压缩扩展头。</p>
 
-<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">name</span><span class="o">=</span><span class="n">Hello</span>
-</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">listener</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">Hello</span>
-</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">root</span><span class="o">=</span><span class="n">data</span>
-</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">services</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">MyServiceImpl</span>
-</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">txn</span><span class="o">.</span><span class="na">timeout</span><span class="o">=</span><span class="mi">300000</span>
-</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">node</span><span class="o">.</span><span class="na">type</span><span class="o">=</span><span class="n">coreServerNode</span>
-</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">server</span><span class="o">.</span><span class="na">host</span><span class="o">=</span><span class="n">localhost</span>
-</span></code></pre></td></tr></table></div></figure>
-
-
-<p>后面两个如果是单节点的模式的话可以不要。具体可以参考<a href="http://www.reddwarfserver.org/javadoc/current/server-all/com/sun/sgs/impl/kernel/doc-files/config-properties.html">config-properties</a>。</p>
+<p>附:<a href="https://developer.mozilla.org/en/WebSockets">各个浏览器对websocket版本的支持情况</a></p>
 </div>
 
 
@@ -157,12 +144,12 @@
   
 
 
-<time datetime="2011-12-03T00:00:00+08:00" pubdate data-updated="true">Dec 3<span>rd</span>, 2011</time>
+<time datetime="2011-10-08T00:00:00+08:00" pubdate data-updated="true">Oct 8<span>th</span>, 2011</time>
       
 
 <span class="categories">
   
-    <a class='category' href='/blog/categories/game/'>Game</a>, <a class='category' href='/blog/categories/java/'>Java</a>
+    <a class='category' href='/blog/categories/basic/'>Basic</a>, <a class='category' href='/blog/categories/javascript/'>Javascript</a>, <a class='category' href='/blog/categories/nodejs/'>nodejs</a>
   
 </span>
 
@@ -178,10 +165,8 @@
     
     <p class="meta">
       
-        <a class="basic-alignment left" href="/blog/2011/12/03/reddwarf-data-model-analytics/" title="Previous Post: RedDwarf服务器数据模块分析">&laquo; RedDwarf服务器数据模块分析</a>
       
-      
-        <a class="basic-alignment right" href="/blog/2011/12/30/trap-for-circle-dependencies-of-node-js/" title="Next Post: node.js的循环依赖">node.js的循环依赖 &raquo;</a>
+        <a class="basic-alignment right" href="/blog/2011/12/03/reddwarf-data-model-analytics/" title="Next Post: RedDwarf服务器数据模块分析">RedDwarf服务器数据模块分析 &raquo;</a>
       
     </p>
   </footer>
@@ -251,8 +236,8 @@
       
         
         // var disqus_developer = 1;
-        var disqus_identifier = 'http://codingcat.net/blog/2011/12/03/reddwarf-enviroment/';
-        var disqus_url = 'http://codingcat.net/blog/2011/12/03/reddwarf-enviroment/';
+        var disqus_identifier = 'http://codingcat.net/blog/2011/10/08/websocket-compress/';
+        var disqus_url = 'http://codingcat.net/blog/2011/10/08/websocket-compress/';
         var disqus_script = 'embed.js';
       
     (function () {

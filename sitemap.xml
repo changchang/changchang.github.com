@@ -1,6 +1,10 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>
     <url>
+        <loc>http://codingcat.net/blog/2011/10/08/websocket-compress/</loc>
+        <lastmod>2012-11-16T09:52:15+08:00</lastmod>
+    </url>
+    <url>
         <loc>http://codingcat.net/blog/2011/12/03/reddwarf-data-model-analytics/</loc>
         <lastmod>2012-11-08T18:53:49+08:00</lastmod>
     </url>
@@ -50,10 +54,10 @@
     </url>
     <url>
         <loc>http://codingcat.net/</loc>
-        <lastmod>2012-11-09T11:42:42+08:00</lastmod>
+        <lastmod>2012-11-16T09:52:15+08:00</lastmod>
     </url>
     <url>
         <loc>http://codingcat.net/blog/archives/</loc>
-        <lastmod>2012-11-09T11:42:42+08:00</lastmod>
+        <lastmod>2012-11-16T09:52:15+08:00</lastmod>
     </url>
 </urlset>

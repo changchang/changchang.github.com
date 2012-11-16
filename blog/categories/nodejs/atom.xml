@@ -4,7 +4,7 @@
   <title><![CDATA[Category: nodejs | Little Cat in Big World]]></title>
   <link href="http://codingcat.net/blog/categories/nodejs/atom.xml" rel="self"/>
   <link href="http://codingcat.net/"/>
-  <updated>2012-11-09T11:42:52+08:00</updated>
+  <updated>2012-11-16T09:56:32+08:00</updated>
   <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
@@ -451,6 +451,43 @@ module.exports.a = 1;
 <p>另外也可以在设计的层面上彻底避免循环依赖的出现。我的场景之所以出现循环依赖，是因为center和service都需要知道对方的存在，即 center <--> service。如果采用依赖注入的方式，则可以切断这种直接依赖，类似于center <- container -> service。即加入一个container角色，把center和service都先加载进来，然后再用IOC的方法把依赖关系建立好。这样center和service都无须知道对方具体的文件所在了，也就不会循环的require对方了。</p>
 
 <p>总的来说，循环依赖的陷阱并不大容易出现，但一旦出现了，在实际的代码中也许还真不好定位。它的存在给我们提了个醒，注意你工程中的依赖关系。哪天node对你抱怨，一个你明明已经exports了的方法undefined，我们就该提醒一下自己：哦，也许是它来了：）</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[websocket的压缩]]></title>
+    <link href="http://codingcat.net/blog/2011/10/08/websocket-compress/"/>
+    <updated>2011-10-08T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2011/10/08/websocket-compress</id>
+    <content type="html"><![CDATA[<p>websocket目前的版本只支持文本格式进行传输，预留有标志位供以后的版本扩展。而传输常常考虑的一个问题就是传输的效率。那么websocket是否跟http协议一样，能对传输的内容进行压缩来降低通讯所占用的带宽呢？</p>
+
+<!--more-->
+
+
+<p>从协议上看，websocket是支持压缩的。websockete里的压缩是以扩展的形式加进来的，参考：
+<a href="http://tools.ietf.org/html/draft-tyoshino-hybi-websocket-perframe-deflate-00">这里</a></p>
+
+<p>目前扩展只支持DEFLATE压缩，客户端和服务器端协商的过程也很简单，双方在握手阶段互发一个扩展头（客户端先发起）即可，然后后续所发的包的全部数据，包括header和body内容全部用DEFLATE算法进行压缩。（applies DEFLATE to everything including header octets such as opcode and payload length.）
+Sec-WebSocket-Extensions: deflate-application-data</p>
+
+<p>正如前面提到的，因为这个扩展的压缩会连header一起压缩，会导致一些代理无法直接解析header的信息，而需要先将整个数据解压。另外，websocket里客户端向服务器发的数据，需要先经过mark即用header里的marking-key对payload的字节进行异或，使包里数据尽量均匀，而这也将对DEFLATE压缩算法的效率造成影响。目前这个扩展争议还是比较大的。
+<a href="http://www.lenholgate.com/blog/2011/07/websockets---the-deflate-stream-extension-is-broken-and-badly-designed.html">参考</a></p>
+
+<p>不过目前websocket api也没有提供设置该参数的接口，支持的浏览器和服务器估计也不多吧。先记录下来，留待以后观察。</p>
+
+<p>----------2011-10-09更新
+上面的草案老了，今天找了个新的。</p>
+
+<p>websocket协议支持对传输内容进行压缩。压缩设置以extension的形式提供，目前仅定义了deflate压缩，需要浏览器和服务器的支持。如果浏览器支持，在websocket握手的时候会进行extension协商，最简单的形式就是添加协议头
+Sec-WebSocket-Extensions: deflate-frame
+如果服务器也支持则在响应中添加同样的协议头即可。
+之后传递的数据包的payload部分都经过deflate压缩。具体的协议内容参看<a href="http://tools.ietf.org/html/draft-tyoshino-hybi-websocket-perframe-deflate-04">这里</a></p>
+
+<p>websocket协议也内置了一个压缩的扩展deflate-stream，具体可以参考<a href="http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-10#section-9.2.1">这里</a> 。但这个扩展存在不少争议，如：它会连同协议的头也一起压缩，导致中间的代理需要先解压然后才能解析websocket协议的头信息。参考WebSockets - <a href="http://www.lenholgate.com/blog/2011/07/websockets---the-deflate-stream-extension-is-broken-and-badly-designed.html">The deflate-stream extension is broken and badly designed</a></p>
+
+<p>目前貌似还没有浏览器支持deflate-frame。对于deflate-stream，主要观察了一下firefox和chrome。firefox6支持deflate-stream压缩扩展，可以在about:config里network.websocket.extensions.stream-deflate设置。截包来看，能看到相应的扩展头。chrome 14.0.835.186没找到配置的地方，截包看默认没加压缩扩展头。</p>
+
+<p>附:<a href="https://developer.mozilla.org/en/WebSockets">各个浏览器对websocket版本的支持情况</a></p>
 ]]></content>
   </entry>
   
