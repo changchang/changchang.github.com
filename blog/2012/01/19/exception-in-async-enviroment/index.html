@@ -1,0 +1,365 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>异步环境下的异常处理 - Little Cat in Big World</title>
+  <meta name="author" content="changchang">
+
+  
+  <meta name="description" content="异步环境下异常处理的思路">
+  <meta name="keywords" content="node.js, java, tomcat, jetty, servlet3, 异步服务器, 异常">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment/">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href='http://fonts.googleapis.com/css?family=Lato:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="/javascripts/ender.js"></script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <link href="/atom.xml" rel="alternate" title="Little Cat in Big World" type="application/atom+xml">
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">Little Cat in Big World</a></h1>
+  
+    <h2>Wandering, Coding and Recording My Life.</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:codingcat.net" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">异步环境下的异常处理</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2012-01-19T00:00:00+08:00" pubdate data-updated="true">Jan 19<span>th</span>, 2012</time>
+        
+         | <a href="#disqus_thread">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><p>webgame容器的设计中遇到了一个问题，如何处理回调中未捕获的异常，维护系统状态的完整性。而这个问题的根源来自于node.js的异步回调模式。</p>
+
+<p>先回想一下，熟悉的tomcat容器中是如何处理未捕获的异常的。</p>
+
+<p>tomcat的模型比较简单，每个请求由一个单独的线程来处理，采用的是同步阻塞的模式。当一个请求到达后，请求会通过层层filter，最终到达servlet的service的方法。当请求从servlet的处理返回后，再按原路经过层层filter返回。整个处理的过程，都是在同一个线程，同一次函数调用周期中完成的。也就是说，完全可以在请求处理的入口处，用一个try&#8230;catch来捕获处理过程中抛出的所有的未捕获异常，并且在这个入口处，是可以获取到这个请求的上下文的，可以由此来给客户端返回错误的响应。</p>
+
+<p>而在node.js中，采用的是异步回调的模式，处理函数返回，并不代表处理流程完成，可能还有后续的处理逻辑在回调函数中等待触发。而回调函数的触发可能会是在另外一个函数调用周期中，所以在当次请求的入口处包裹try&#8230;catch并不总是能捕捉到回调函数中抛出来的异常。但从另一面来看，回调函数最终一定是由node.js中处理任务的主线程来触发的，所以node可以帮我们捕捉到这些异常，反馈到开发者手里也就是我们所熟悉的uncaughtException事件。但在这种情况下，回调函数的执行环境是node的主线程，所以已无法获取到对应的请求上下文，也就无法给客户端反馈出错的信息了。</p>
+
+<!--more-->
+
+
+<p>作为对比，我简单的考察了一下java中的几个web容器提供异步请求处理接口的例子。</p>
+
+<h1>tomcat comet</h1>
+
+<p>tomcat comet的处理手法比较简单粗暴，由容器管理线程的分配调度，只暴露给用户一个简单的event接口，让用户根据event的类型做处理。整个流程还是控制在容器的管理下的，即使event接口中，用户抛出了未捕获异常，容器还是可以捕捉到，并能知晓请求的上下文。代码框架如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="cm">/**</span>
+</span><span class='line'><span class="cm"> * Process the given Comet event.</span>
+</span><span class='line'><span class="cm"> *</span>
+</span><span class='line'><span class="cm"> * @param event The Comet event that will be processed</span>
+</span><span class='line'><span class="cm"> * @throws IOException</span>
+</span><span class='line'><span class="cm"> * @throws ServletException</span>
+</span><span class='line'><span class="cm"> */</span>
+</span><span class='line'><span class="kd">public</span> <span class="kt">void</span> <span class="nf">event</span><span class="o">(</span><span class="n">CometEvent</span> <span class="n">event</span><span class="o">)</span>
+</span><span class='line'>    <span class="kd">throws</span> <span class="n">IOException</span><span class="o">,</span> <span class="n">ServletException</span> <span class="o">{</span>
+</span><span class='line'>    <span class="n">HttpServletRequest</span> <span class="n">request</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="na">getHttpServletRequest</span><span class="o">();</span>
+</span><span class='line'>    <span class="n">HttpServletResponse</span> <span class="n">response</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="na">getHttpServletResponse</span><span class="o">();</span>
+</span><span class='line'>    <span class="k">if</span> <span class="o">(</span><span class="n">event</span><span class="o">.</span><span class="na">getEventType</span><span class="o">()</span> <span class="o">==</span> <span class="n">CometEvent</span><span class="o">.</span><span class="na">EventType</span><span class="o">.</span><span class="na">BEGIN</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">event</span><span class="o">.</span><span class="na">getEventType</span><span class="o">()</span> <span class="o">==</span> <span class="n">CometEvent</span><span class="o">.</span><span class="na">EventType</span><span class="o">.</span><span class="na">ERROR</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">event</span><span class="o">.</span><span class="na">getEventType</span><span class="o">()</span> <span class="o">==</span> <span class="n">CometEvent</span><span class="o">.</span><span class="na">EventType</span><span class="o">.</span><span class="na">END</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>    <span class="o">}</span> <span class="k">else</span> <span class="k">if</span> <span class="o">(</span><span class="n">event</span><span class="o">.</span><span class="na">getEventType</span><span class="o">()</span> <span class="o">==</span> <span class="n">CometEvent</span><span class="o">.</span><span class="na">EventType</span><span class="o">.</span><span class="na">READ</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>    <span class="o">}</span>
+</span><span class='line'><span class="o">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h1>jetty continuation</h1>
+
+<p>jetty continuation的处理手法更加粗暴，通过Continuation实例的suspend方法来让当前请求挂起，并将处理线程归还给容器，等待超时或resume方法被调用时再继续执行该请求。</p>
+
+<p>实现的手法是suspend方法内部会抛除一个RetryRequeset的RuntimeException，以此来终止当前请求的处理流程（具体参考SelectChannelConnector.RetryContinuation）。外层容器捕获该异常后，将请求加入超时队列，线程退还给容器。等到超时和resume方法被调用后，请求会从头再执行一次（包括前面的filter）。所以，continuation要求该类请求所经过的filter和servlet必须是幂等的（可以重复进入，不影响状态）。因为continuation其实是把request的流程再执行一遍，所以它实质上还是同步的模式，所以对未捕获的异常处理等同于tomcat的传统处理方式。</p>
+
+<p>continuation的示例如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="kd">private</span> <span class="kt">void</span> <span class="nf">doPoll</span><span class="o">(</span><span class="n">HttpServletRequest</span> <span class="n">request</span><span class="o">,</span> <span class="n">AjaxResponse</span> <span class="n">response</span><span class="o">)</span>
+</span><span class='line'><span class="o">{</span>
+</span><span class='line'>    <span class="n">HttpSession</span> <span class="n">session</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="na">getSession</span><span class="o">(</span><span class="kc">true</span><span class="o">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="kd">synchronized</span> <span class="o">(</span><span class="n">mutex</span><span class="o">)</span>
+</span><span class='line'>    <span class="o">{</span>
+</span><span class='line'>        <span class="n">Member</span> <span class="n">member</span> <span class="o">=</span> <span class="o">(</span><span class="n">Member</span><span class="o">)</span><span class="n">chatroom</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">session</span><span class="o">.</span><span class="na">getId</span><span class="o">());</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="c1">// Is there any chat events ready to send?</span>
+</span><span class='line'>        <span class="k">if</span> <span class="o">(!</span><span class="n">member</span><span class="o">.</span><span class="na">hasEvents</span><span class="o">())</span>
+</span><span class='line'>        <span class="o">{</span>
+</span><span class='line'>            <span class="c1">// No - so prepare a continuation</span>
+</span><span class='line'>            <span class="n">Continuation</span> <span class="n">continuation</span> <span class="o">=</span> <span class="n">ContinuationSupport</span><span class="o">.</span><span class="na">getContinuation</span><span class="o">(</span><span class="n">request</span><span class="o">,</span> <span class="n">mutex</span><span class="o">);</span>
+</span><span class='line'>            <span class="n">member</span><span class="o">.</span><span class="na">setContinuation</span><span class="o">(</span><span class="n">continuation</span><span class="o">);</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="c1">// wait for an event or timeout</span>
+</span><span class='line'>            <span class="n">continuation</span><span class="o">.</span><span class="na">suspend</span><span class="o">(</span><span class="n">timeoutMS</span><span class="o">);</span>
+</span><span class='line'>        <span class="o">}</span>
+</span><span class='line'>        <span class="n">member</span><span class="o">.</span><span class="na">setContinuation</span><span class="o">(</span><span class="kc">null</span><span class="o">);</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="c1">// send any events</span>
+</span><span class='line'>        <span class="n">member</span><span class="o">.</span><span class="na">sendEvents</span><span class="o">(</span><span class="n">response</span><span class="o">);</span>
+</span><span class='line'>    <span class="o">}</span>
+</span><span class='line'><span class="o">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h1>servlet 3.0</h1>
+
+<p>servlet 3.0中也加入了异步处理的支持，由ServletRequest对象通过startAsync方法获取一个AsyncContext，将请求处理变为异步化，当前的处理函数可以直接结束返回，开发者可以另外开一个线程，通过AsyncContext继续完成后续的响应。这个模型跟node.js是比较类似的。因为处理线程是用户派生的，如果有未捕获异常，容器是不知晓的。而因为异常，AsyncContext的complete或dispatch方法没有执行，将会导致请求无法返回，这点跟node也是类似的。</p>
+
+<p>最后回头看看，在node的异步处理的模式下，容器对回调的控制较弱。一般的形式通过传递回调函数，由开发者代码调用来告知容器处理流程的真正结束，connect，nodeunit等都是用类似的手法来处理。如果回调函数中因为未捕获异常而退出，则后续流程会因此而丢失。做为容器来说，也有可能因为用户的不良代码，忘了调用回调函数而丢掉后面的流程。</p>
+
+<p>暂时也没想到比较好的解决办法，目前的想法是设置回调超时。在每个需要用户代码调用回调的接口添加一个超时记录，用一个类似bitmap的东西来维护reqId和超时记录的映射关系。如果用户代码在指定时间内调用回调函数，则根据reqId清空超时记录;否则对该次请求做超时处理。</p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">changchang</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2012-01-19T00:00:00+08:00" pubdate data-updated="true">Jan 19<span>th</span>, 2012</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/java/'>Java</a>, <a class='category' href='/blog/categories/nodejs/'>nodejs</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2012/01/12/git-branch-model/" title="Previous Post: [转]一个成功的Git分支模型">&laquo; [转]一个成功的Git分支模型</a>
+      
+      
+        <a class="basic-alignment right" href="/blog/2012/03/31/seq-queue/" title="Next Post: seq-queue:在node.js中如何保持请求处理顺序的一些想法">seq-queue:在node.js中如何保持请求处理顺序的一些想法 &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+  <section>
+    <h1>Comments</h1>
+    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+  </section>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2012/11/01/libeio-source-analytics/">libeio源码浅析</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/20/libev-watchers/">libev源码分析 -- 常用watcher</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/09/libev-framework/">libev源码分析 -- 整体设计</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/08/from-wordpress-to-octopress/">从wordpress到octopress</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/05/18/connect-framework/">connect源码分析--基础架构</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+<section>
+  <h1>Categories</h1>
+    <ul id="category-list"><li><a href='/blog/categories/basic'>Basic (1)</a></li><li><a href='/blog/categories/c-c-'>C/C++ (3)</a></li><li><a href='/blog/categories/game'>Game (2)</a></li><li><a href='/blog/categories/java'>Java (4)</a></li><li><a href='/blog/categories/javascript'>Javascript (1)</a></li><li><a href='/blog/categories/nodejs'>nodejs (5)</a></li><li><a href='/blog/categories/svn-git'>svn/git (1)</a></li><li><a href='/blog/categories/心情'>心情 (1)</a></li></ul>
+</section>
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2012 - changchang -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+<script type="text/javascript">
+      var disqus_shortname = 'codingcat';
+      
+        
+        // var disqus_developer = 1;
+        var disqus_identifier = 'http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment/';
+        var disqus_url = 'http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment/';
+        var disqus_script = 'embed.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+
+
+
+
+
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-35967317-1']);
+  _gaq.push(['_trackPageview']);
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+</body>
+</html>

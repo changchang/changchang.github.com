@@ -1,0 +1,421 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>RedDwarf服务器数据模块分析 - Little Cat in Big World</title>
+  <meta name="author" content="changchang">
+
+  
+  <meta name="description" content="分析RedDwarf游戏服务器的水平扩展原理和分布式事务实现">
+  <meta name="keywords" content="RedWarf, game server, horizontal scalability, distributed transaction">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://codingcat.net/blog/2011/12/03/reddwarf-data-model-analytics/">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href='http://fonts.googleapis.com/css?family=Lato:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="/javascripts/ender.js"></script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <link href="/atom.xml" rel="alternate" title="Little Cat in Big World" type="application/atom+xml">
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">Little Cat in Big World</a></h1>
+  
+    <h2>Wandering, Coding and Recording My Life.</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:codingcat.net" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">RedDwarf服务器数据模块分析</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2011-12-03T00:00:00+08:00" pubdate data-updated="true">Dec 3<span>rd</span>, 2011</time>
+        
+         | <a href="#disqus_thread">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><p>这段时间在分析RedDwarf服务器的代码，以下简称RD。RD最吸引我的地方就是水平扩展的能力了。一个游戏服务器，进行水平扩展，不可避免的一个问题就是分布式数据访问，即不同的服务器节点之间的数据共享问题。如：一个游戏服务器节点上的玩家要于另外一个节点上的玩家进行交互，中间的数据如何保证事务性，延时如何满足需求等。</p>
+
+<!--more-->
+
+
+<h2>RedDwarf的数据层的工作原理</h2>
+
+<p>RD将数据共享的重任委托给了一个强大的数据层。RD将需要共享的对象定义成ManagedObject（以下简称MO）。MO可以通过DataManager提供的接口持久化到统一的数据层，各个服务器节点再通过统一的数据层来访问共享对象。</p>
+
+<p>RD的数据服务器层简单的来看可以分为三层。DataManager是一个接口，具体实现实际是DataServiceImpl。所以三层结构关系主要如下：DataService -> DataStore ->DB。</p>
+
+<ul>
+<li><p>DataService主要为开发者提供了数据层的操作接口;</p></li>
+<li><p>DataStore则为中间层，主要屏蔽主从节点的差异以及底层数据库实现的差异;</p></li>
+<li><p>DB层负责与具体的数据库进行交互，目前主要有两种实现BDB和JE。在目前RD版本中，只有一个中心节点负责运行数据库，其他的从属节点实际上都是通过远程调用委托中心节点进行数据库操作。</p></li>
+</ul>
+
+
+<p>RD在多节点模式下运行时，有一个coreServer的中心节点需要首先起起来。coreServer的一项重要任务就是启动DataStoreImpl，后者将建立中心数据库（默认为BDB），并启动一个DataStoreServer实例，将代理DataStore的远程接口暴露出去。而之后的附属节点appServer启动之后，会建立一个DataStoreClient的实例来根据配置文件连接中心节点的DataStoreServer。DataClientClient实现了DataStore接口，所以它实际上充当的是DataStore的角色，将本节点的DataService的请求转交给中心节点的DataStoreServer。</p>
+
+<p>就是通过这样的结构，RD将所有从节点的数据请求都转移到了中心节点上，再由中心节点进行统一的事务调度，避免了分布式事务。</p>
+
+<h2>中心节点的事务</h2>
+
+<p>那么，在中心节点里，RD又是怎么处理数据库事务的呢？</p>
+
+<p>在讲这个之前，需要先讲一下ManagedObject的原理。ManagedObject是一个标记接口，跟Serializable一样。RD要求所有MO都实现ManagedObject接口，同时也要实现Serializable接口，因为MO最终需要序列化再存到数据库里的。</p>
+
+<p>每一个MO，在DataService内部实际上会有一个ManagedObjectReference（以下简称MOR）实例与之对应（无论是createReference和getBinding操作获得）。MOR主要维护的是objectId（即oid）到实际的java object的映射关系，底层数据库存的其实也就是oid->object的key/value对。MOR内部也会缓存一个与它关联的oid->object的映射。只有第一次调MOR的get方法时，才会真正到数据库里去取object的数据并反序列化，并把结果缓存到MOR内部。之后的所有get操作，都会从缓存里取，以提高速度和降低数据库负担。这就相当于本地有了个缓存。</p>
+
+<p>那RD怎么保证这个缓存和DB的一致性呢？即如果别的节点改变了MO的内容，当前节点怎么得知呢？这也就是前面提到的数据库事务的问题了。</p>
+
+<p>RD很聪明，把这个艰巨的任务交给了底层的DB。RD底层依赖的是BDB和JE数据库，它采用的默认锁模式是，READ_COMMITED=false和READ_UNCOMMITED（具体可以参考<a href="http://docs.oracle.com/cd/E17277_02/html/java/com/sleepycat/je/LockMode.html">BDB LockMode</a>和BdbEnvironment的构造函数）。简单的来说，RD对底层的DB的读操作会hold住该数据的一个读锁，直至事务结束。后面其他的事务如果也申请读锁是可以的，但申请写锁，则需要等待读事务结束后才能继续或者抛出TimeOut异常。从而保证了数据的事务性访问。我们所熟悉的DataManager的MarkForUpdate方法，实际上也是向数据库申请了一个写锁，直至事务结束后释放。</p>
+
+<p>这样带来的一个问题就是，热门的数据可能会有多个事务竞争，产生瓶颈。不过RD的模型本来就建议采用短事务，默认事务时长是100ms以内，数据访问冲突的超时时间是事务超时时间的1/10,所以一般的游戏，除了FPS或即时的MMORPG，应该还是可以满足需求的。</p>
+
+<h2>代码实验</h2>
+
+<p>说了那么多，都是从代码里看的，木得实际依据，为了证实我们的猜测，上点代码吧。</p>
+
+<p>测试环境，两台RD服务器节点（一个coreServer和一个appServer）。</p>
+
+<p>coreServer配置app.properties</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">name</span><span class="o">=</span><span class="n">Hello</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">listener</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">Hello</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">root</span><span class="o">=</span><span class="n">data</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">services</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">MyServiceImpl</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">txn</span><span class="o">.</span><span class="na">timeout</span><span class="o">=</span><span class="mi">300000</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">node</span><span class="o">.</span><span class="na">type</span><span class="o">=</span><span class="n">coreServerNode</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">server</span><span class="o">.</span><span class="na">host</span><span class="o">=</span><span class="n">localhost</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>appServer配置app.properties</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">name</span><span class="o">=</span><span class="n">Hello1</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">listener</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">Hello</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">app</span><span class="o">.</span><span class="na">root</span><span class="o">=</span><span class="n">data</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">services</span><span class="o">=</span><span class="n">test</span><span class="o">.</span><span class="na">MyServiceImpl</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">txn</span><span class="o">.</span><span class="na">timeout</span><span class="o">=</span><span class="mi">300000</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">node</span><span class="o">.</span><span class="na">type</span><span class="o">=</span><span class="n">appNode</span>
+</span><span class='line'><span class="n">com</span><span class="o">.</span><span class="na">sun</span><span class="o">.</span><span class="na">sgs</span><span class="o">.</span><span class="na">server</span><span class="o">.</span><span class="na">host</span><span class="o">=</span><span class="n">localhost</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>为了展现访问冲突，有个事务需要中途sleep一阵子，所以把事务超时设为300s。</p>
+
+<p>在coreServer的MyServiceImpl的doReady方法里加入以下代码</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="k">this</span><span class="o">.</span><span class="na">scheduler</span><span class="o">.</span><span class="na">scheduleTask</span><span class="o">(</span><span class="k">new</span> <span class="n">AbstractKernelRunnable</span><span class="o">(</span><span class="n">name</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>  <span class="nd">@Override</span>
+</span><span class='line'>  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+</span><span class='line'>      <span class="n">String</span> <span class="n">name</span> <span class="o">=</span> <span class="s">&quot;chang&quot;</span><span class="o">;</span>
+</span><span class='line'>
+</span><span class='line'>      <span class="n">MyData</span> <span class="n">bd</span> <span class="o">=</span> <span class="o">(</span><span class="n">MyData</span><span class="o">)</span><span class="n">txnProxy</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="n">DataService</span><span class="o">.</span><span class="na">class</span><span class="o">).</span><span class="na">getBinding</span><span class="o">(</span><span class="n">name</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">()</span> <span class="o">+</span> <span class="s">&quot; before:&quot;</span> <span class="o">+</span> <span class="n">bd</span><span class="o">.</span><span class="na">getA</span><span class="o">());</span>
+</span><span class='line'>      <span class="n">Thread</span><span class="o">.</span><span class="na">sleep</span><span class="o">(</span><span class="mi">10000</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">MyData</span> <span class="n">ad</span> <span class="o">=</span> <span class="o">(</span><span class="n">MyData</span><span class="o">)</span><span class="n">txnProxy</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="n">DataService</span><span class="o">.</span><span class="na">class</span><span class="o">).</span><span class="na">getBinding</span><span class="o">(</span><span class="n">name</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">()</span> <span class="o">+</span> <span class="s">&quot; after:&quot;</span> <span class="o">+</span> <span class="n">ad</span><span class="o">.</span><span class="na">getA</span><span class="o">());</span>
+</span><span class='line'>  <span class="o">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="o">},</span> <span class="k">this</span><span class="o">.</span><span class="na">txnProxy</span><span class="o">.</span><span class="na">getCurrentOwner</span><span class="o">());</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>主要做的事情就是先读一个事先绑定好了的对象，观察它的值。然后休眠10s，再取一遍，观察值有没有变。</p>
+
+<p>appServer的MyServiceImpl的doReady方法里加入以下代码</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="k">this</span><span class="o">.</span><span class="na">scheduler</span><span class="o">.</span><span class="na">scheduleTask</span><span class="o">(</span><span class="k">new</span> <span class="n">AbstractKernelRunnable</span><span class="o">(</span><span class="n">name</span><span class="o">)</span> <span class="o">{</span>
+</span><span class='line'>  <span class="nd">@Override</span>
+</span><span class='line'>  <span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="kd">throws</span> <span class="n">Exception</span> <span class="o">{</span>
+</span><span class='line'>      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">()</span> <span class="o">+</span> <span class="s">&quot; begin.&quot;</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">String</span> <span class="n">name</span> <span class="o">=</span> <span class="s">&quot;chang1&quot;</span><span class="o">;</span>
+</span><span class='line'>      <span class="n">MyData</span> <span class="n">data</span> <span class="o">=</span> <span class="o">(</span><span class="n">MyData</span><span class="o">)</span><span class="n">txnProxy</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="n">DataService</span><span class="o">.</span><span class="na">class</span><span class="o">).</span><span class="na">getBinding</span><span class="o">(</span><span class="n">name</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">txnProxy</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="n">DataService</span><span class="o">.</span><span class="na">class</span><span class="o">).</span><span class="na">markForUpdate</span><span class="o">(</span><span class="n">data</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">data</span><span class="o">.</span><span class="na">setA</span><span class="o">(</span><span class="n">data</span><span class="o">.</span><span class="na">getA</span><span class="o">()</span> <span class="o">+</span> <span class="mi">1</span><span class="o">);</span>
+</span><span class='line'>      <span class="n">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="n">Date</span><span class="o">()</span> <span class="o">+</span> <span class="s">&quot; finish.&quot;</span><span class="o">);</span>
+</span><span class='line'>  <span class="o">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="o">},</span> <span class="k">this</span><span class="o">.</span><span class="na">txnProxy</span><span class="o">.</span><span class="na">getCurrentOwner</span><span class="o">());</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>主要做的事情是取同一个对象，然后markForUpdate一下，然后修改对象的字段。
+运行后，从输出结果的时间序列上看，appServer的事务会一直被堵着，直到coreServer的after输出完毕后，才能接着往下执行（这里因为加长了超时时间，所以不会冲突超时）。</p>
+
+<p>那如果不做markForUpdate，直接修改会怎么样呢？其实效果也一样的，RD默认开启了自动检测修改，会将没有markForUpdate的MO设为MAYBE_MODIFIED状态，在事务提交时，会检测该MO是否有被修改过（主要原理是，get的时候做一下序列化，commit的时候再做一下序列化，两次序列化的结果进行比较看是否有改变），如果有改变的话就提交数据库，这时就会涉及到数据库写操作，一样会被阻塞住。
+那么把appServer的</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="n">txnProxy</span><span class="o">.</span><span class="na">getService</span><span class="o">(</span><span class="n">DataService</span><span class="o">.</span><span class="na">class</span><span class="o">).</span><span class="na">markForUpdate</span><span class="o">(</span><span class="n">data</span><span class="o">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>语句去掉。</p>
+
+<p>执行的结果可以看到appServer上的begin和finish都在coreServer的after之前打印了，难道是绕过了RD的事务了？其实不是的，因为appServer上的begin和finish都是在transaction task的run方法里的，而数据提交是在transaction task的run方法执行完成后进行的，所以当finish打印时，实际上还没开始MO的flush，所以还不会堵塞。为了验证这一点，可以在coreServer上的DataStoreServerImpl的</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="kd">public</span> <span class="kt">void</span> <span class="nf">setObjects</span><span class="o">(</span><span class="kt">long</span> <span class="n">tid</span><span class="o">,</span> <span class="kt">long</span><span class="o">[]</span> <span class="n">oids</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[][]</span> <span class="n">dataArray</span><span class="o">)</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>方法里，</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='java'><span class='line'><span class="n">store</span><span class="o">.</span><span class="na">setObjects</span><span class="o">(</span><span class="n">txn</span><span class="o">,</span> <span class="n">oids</span><span class="o">,</span> <span class="n">dataArray</span><span class="o">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>语句前后加上日志，打印一下设置相应oid的请求的开始和结束时间，就可以直到，set请求其实是一直阻塞着，直到coreServer的事务完成后，才能往下执行的。</p>
+
+<h2>总结</h2>
+
+<p>简单的看，RedDwarf分布式事务主要分三步来实现。第一步先将所有节点的操作请求集中到中心节点，将原来并发的请求串行化。第二步则是为请求分配读写锁，授权给各个节点。第三部，各个节点按读写约定执行事务逻辑，commit后同步到中心节点，完成事务。使用的前提是所有事务都是短事务，否则将会影响后面事务的执行。</p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">changchang</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2011-12-03T00:00:00+08:00" pubdate data-updated="true">Dec 3<span>rd</span>, 2011</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/game/'>Game</a>, <a class='category' href='/blog/categories/java/'>Java</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2011/10/08/websocket-compress/" title="Previous Post: websocket的压缩">&laquo; websocket的压缩</a>
+      
+      
+        <a class="basic-alignment right" href="/blog/2011/12/03/reddwarf-enviroment/" title="Next Post: RedDwarf服务器测试环境搭建">RedDwarf服务器测试环境搭建 &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+  <section>
+    <h1>Comments</h1>
+    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+  </section>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2012/11/01/libeio-source-analytics/">libeio源码浅析</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/20/libev-watchers/">libev源码分析 -- 常用watcher</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/09/libev-framework/">libev源码分析 -- 整体设计</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/08/from-wordpress-to-octopress/">从wordpress到octopress</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/05/18/connect-framework/">connect源码分析--基础架构</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+<section>
+  <h1>Categories</h1>
+    <ul id="category-list"><li><a href='/blog/categories/basic'>Basic (1)</a></li><li><a href='/blog/categories/c-c-'>C/C++ (3)</a></li><li><a href='/blog/categories/game'>Game (2)</a></li><li><a href='/blog/categories/java'>Java (4)</a></li><li><a href='/blog/categories/javascript'>Javascript (1)</a></li><li><a href='/blog/categories/nodejs'>nodejs (5)</a></li><li><a href='/blog/categories/svn-git'>svn/git (1)</a></li><li><a href='/blog/categories/心情'>心情 (1)</a></li></ul>
+</section>
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2012 - changchang -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+<script type="text/javascript">
+      var disqus_shortname = 'codingcat';
+      
+        
+        // var disqus_developer = 1;
+        var disqus_identifier = 'http://codingcat.net/blog/2011/12/03/reddwarf-data-model-analytics/';
+        var disqus_url = 'http://codingcat.net/blog/2011/12/03/reddwarf-data-model-analytics/';
+        var disqus_script = 'embed.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+
+
+
+
+
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-35967317-1']);
+  _gaq.push(['_trackPageview']);
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+</body>
+</html>

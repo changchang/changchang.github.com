@@ -1,0 +1,271 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>websocket的压缩 - Little Cat in Big World</title>
+  <meta name="author" content="changchang">
+
+  
+  <meta name="description" content="Little Cat in Big World, technology blog recording my coding life.">
+  <meta name="keywords" content="Technology blog, Coding, Little Cat in Big World">
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://codingcat.net/blog/2011/10/08/websocket-compress/">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href='http://fonts.googleapis.com/css?family=Lato:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="/javascripts/ender.js"></script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <link href="/atom.xml" rel="alternate" title="Little Cat in Big World" type="application/atom+xml">
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">Little Cat in Big World</a></h1>
+  
+    <h2>Wandering, Coding and Recording My Life.</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:codingcat.net" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">Websocket的压缩</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2011-10-08T00:00:00+08:00" pubdate data-updated="true">Oct 8<span>th</span>, 2011</time>
+        
+         | <a href="#disqus_thread">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><p>websocket目前的版本只支持文本格式进行传输，预留有标志位供以后的版本扩展。而传输常常考虑的一个问题就是传输的效率。那么websocket是否跟http协议一样，能对传输的内容进行压缩来降低通讯所占用的带宽呢？</p>
+
+<!--more-->
+
+
+<p>从协议上看，websocket是支持压缩的。websockete里的压缩是以扩展的形式加进来的，参考：
+<a href="http://tools.ietf.org/html/draft-tyoshino-hybi-websocket-perframe-deflate-00">这里</a></p>
+
+<p>目前扩展只支持DEFLATE压缩，客户端和服务器端协商的过程也很简单，双方在握手阶段互发一个扩展头（客户端先发起）即可，然后后续所发的包的全部数据，包括header和body内容全部用DEFLATE算法进行压缩。（applies DEFLATE to everything including header octets such as opcode and payload length.）
+Sec-WebSocket-Extensions: deflate-application-data</p>
+
+<p>正如前面提到的，因为这个扩展的压缩会连header一起压缩，会导致一些代理无法直接解析header的信息，而需要先将整个数据解压。另外，websocket里客户端向服务器发的数据，需要先经过mark即用header里的marking-key对payload的字节进行异或，使包里数据尽量均匀，而这也将对DEFLATE压缩算法的效率造成影响。目前这个扩展争议还是比较大的。
+<a href="http://www.lenholgate.com/blog/2011/07/websockets---the-deflate-stream-extension-is-broken-and-badly-designed.html">参考</a></p>
+
+<p>不过目前websocket api也没有提供设置该参数的接口，支持的浏览器和服务器估计也不多吧。先记录下来，留待以后观察。</p>
+
+<p>&#8212;&#8212;&#8212;-2011-10-09更新
+上面的草案老了，今天找了个新的。</p>
+
+<p>websocket协议支持对传输内容进行压缩。压缩设置以extension的形式提供，目前仅定义了deflate压缩，需要浏览器和服务器的支持。如果浏览器支持，在websocket握手的时候会进行extension协商，最简单的形式就是添加协议头
+Sec-WebSocket-Extensions: deflate-frame
+如果服务器也支持则在响应中添加同样的协议头即可。
+之后传递的数据包的payload部分都经过deflate压缩。具体的协议内容参看<a href="http://tools.ietf.org/html/draft-tyoshino-hybi-websocket-perframe-deflate-04">这里</a></p>
+
+<p>websocket协议也内置了一个压缩的扩展deflate-stream，具体可以参考<a href="http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-10#section-9.2.1">这里</a> 。但这个扩展存在不少争议，如：它会连同协议的头也一起压缩，导致中间的代理需要先解压然后才能解析websocket协议的头信息。参考WebSockets - <a href="http://www.lenholgate.com/blog/2011/07/websockets---the-deflate-stream-extension-is-broken-and-badly-designed.html">The deflate-stream extension is broken and badly designed</a></p>
+
+<p>目前貌似还没有浏览器支持deflate-frame。对于deflate-stream，主要观察了一下firefox和chrome。firefox6支持deflate-stream压缩扩展，可以在about:config里network.websocket.extensions.stream-deflate设置。截包来看，能看到相应的扩展头。chrome 14.0.835.186没找到配置的地方，截包看默认没加压缩扩展头。</p>
+
+<p>附:<a href="https://developer.mozilla.org/en/WebSockets">各个浏览器对websocket版本的支持情况</a></p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">changchang</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2011-10-08T00:00:00+08:00" pubdate data-updated="true">Oct 8<span>th</span>, 2011</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/basic/'>Basic</a>, <a class='category' href='/blog/categories/javascript/'>Javascript</a>, <a class='category' href='/blog/categories/nodejs/'>nodejs</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+      
+        <a class="basic-alignment right" href="/blog/2011/12/03/reddwarf-data-model-analytics/" title="Next Post: RedDwarf服务器数据模块分析">RedDwarf服务器数据模块分析 &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+  <section>
+    <h1>Comments</h1>
+    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+  </section>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2012/11/01/libeio-source-analytics/">libeio源码浅析</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/20/libev-watchers/">libev源码分析 -- 常用watcher</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/09/libev-framework/">libev源码分析 -- 整体设计</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/08/from-wordpress-to-octopress/">从wordpress到octopress</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/05/18/connect-framework/">connect源码分析--基础架构</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+<section>
+  <h1>Categories</h1>
+    <ul id="category-list"><li><a href='/blog/categories/basic'>Basic (1)</a></li><li><a href='/blog/categories/c-c-'>C/C++ (3)</a></li><li><a href='/blog/categories/game'>Game (2)</a></li><li><a href='/blog/categories/java'>Java (4)</a></li><li><a href='/blog/categories/javascript'>Javascript (1)</a></li><li><a href='/blog/categories/nodejs'>nodejs (5)</a></li><li><a href='/blog/categories/svn-git'>svn/git (1)</a></li><li><a href='/blog/categories/心情'>心情 (1)</a></li></ul>
+</section>
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2012 - changchang -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+<script type="text/javascript">
+      var disqus_shortname = 'codingcat';
+      
+        
+        // var disqus_developer = 1;
+        var disqus_identifier = 'http://codingcat.net/blog/2011/10/08/websocket-compress/';
+        var disqus_url = 'http://codingcat.net/blog/2011/10/08/websocket-compress/';
+        var disqus_script = 'embed.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+
+
+
+
+
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-35967317-1']);
+  _gaq.push(['_trackPageview']);
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+</body>
+</html>

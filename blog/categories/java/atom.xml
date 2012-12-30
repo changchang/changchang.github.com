@@ -1,0 +1,435 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: Java | Little Cat in Big World]]></title>
+  <link href="http://codingcat.net/blog/categories/java/atom.xml" rel="self"/>
+  <link href="http://codingcat.net/"/>
+  <updated>2012-11-16T09:56:32+08:00</updated>
+  <id>http://codingcat.net/</id>
+  <author>
+    <name><![CDATA[changchang]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[Mina工作原理分析]]></title>
+    <link href="http://codingcat.net/blog/2012/04/15/mina-architecture/"/>
+    <updated>2012-04-15T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2012/04/15/mina-architecture</id>
+    <content type="html"><![CDATA[<p>Mina是Apache社区维护的一个开源的高性能IO框架，在业界内久经考验，广为使用。Mina与后来兴起的高性能IO新贵Netty一样，都是韩国人Trustin Lee的大作，二者的设计理念是极为相似的。在作为一个强大的开发工具的同时，这两个框架的优雅设计和不俗的表现，有很多地方是值得学习和借鉴的。本文将从Mina工作原理的角度出发，对其结构进行分析。</p>
+
+<!--more-->
+
+
+<h1>总体结构</h1>
+
+<p>Mina的底层依赖的主要是Java NIO库，上层提供的是基于事件的异步接口。其整体的结构如下：</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/ed/3e/5a/8010243e759a9099b2839dc501fb76a8.png" alt="mina-flow" title="mina-flow" width="854" height="600" />
+</center>
+
+
+<h2>IoService</h2>
+
+<p>最底层的是IOService，负责具体的IO相关工作。这一层的典型代表有IOSocketAcceptor和IOSocketChannel，分别对应TCP协议下的服务端和客户端的IOService。IOService的意义在于隐藏底层IO的细节，对上提供统一的基于事件的异步IO接口。每当有数据到达时，IOService会先调用底层IO接口读取数据，封装成IoBuffer，之后以事件的形式通知上层代码，从而将Java NIO的同步IO接口转化成了异步IO。所以从图上看，进来的low-level IO经过IOService层后变成IO Event。</p>
+
+<p>具体的代码可以参考org.apache.mina.core.polling.AbstractPollingIoProcessor的私有内部类Processor。</p>
+
+<h2>IoFilterChain</h2>
+
+<p>Mina的设计理念之一就是业务代码和数据包处理代码分离，业务代码只专注于业务逻辑，其他的逻辑如：数据包的解析，封装，过滤等则交由IoFilterChain来处理。IoFilterChain可以看成是Mina处理流程的扩展点。这样的划分使得结构更加清晰，代码分工更明确。开发者通过往Chain中添加IoFilter，来增强处理流程，而不会影响后面的业务逻辑代码。</p>
+
+<h2>IoHandler</h2>
+
+<p>IoHandler是实现业务逻辑的地方，需要有开发者自己来实现这个接口。IoHandler可以看成是Mina处理流程的终点，每个IoService都需要指定一个IoHandler。</p>
+
+<h2>IoSession</h2>
+
+<p>IoSession是对底层连接的封装，一个IoSession对应于一个底层的IO连接（在Mina中UDP也被抽象成了连接）。通过IoSession，可以获取当前连接相关的上下文信息，以及向远程peer发送数据。发送数据其实也是个异步的过程。发送的操作首先会逆向穿过IoFilterChain，到达IoService。但IoService上并不会直接调用底层IO接口来将数据发送出去，而是会将该次调用封装成一个WriteRequest，放入session的writeRequestQueue中，最后由IoProcessor线程统一调度flush出去。所以发送操作并不会引起上层调用线程的阻塞。</p>
+
+<p>具体代码可以参考org.apache.mina.core.filterchain.DefaultIoFilterChain的内部类HeadFilter的filterWrite方法。</p>
+
+<p>最后附上一个简单的echo server例子来作为本节结束吧。</p>
+
+<p>EchoServer.java</p>
+
+<p>```java
+public class EchoServer {
+  public static void main(String[] args) {</p>
+
+<pre><code>int PORT = 3333;
+NioSocketAcceptor acceptor = new NioSocketAcceptor();
+acceptor.setHandler(new EchoHandler());
+try {
+  acceptor.bind(new InetSocketAddress(PORT));
+  System.out.println("Listening on " + PORT);
+} catch (IOException e) {
+  e.printStackTrace();
+}
+</code></pre>
+
+<p>  }
+}
+```</p>
+
+<p>EchoHandler.java</p>
+
+<p>```java
+  public class EchoHandler extends IoHandlerAdapter {</p>
+
+<pre><code>@Override
+public void messageReceived(IoSession session, Object message) throws Exception {
+  session.write(((IoBuffer)message).duplicate());
+}
+</code></pre>
+
+<p>  }
+```</p>
+
+<h1>工作原理</h1>
+
+<p>前面介绍了Mina总体的层次结构，那么在Mina里面是怎么使用Java NIO和进行线程调度的呢？这是提高IO处理性能的关键所在。Mina的线程调度原理主要如下图所示：</p>
+
+<center>
+  <img src="http://i.6.cn/cvbnm/bd/46/16/9a9fb8a01640ec6bed25da60ca3eb368.png" alt="mina-threads" title="mina-threads" width="696" height="270" />
+</center>
+
+
+<h2>Acceptor与Connector线程</h2>
+
+<p>在服务器端，bind一个端口后，会创建一个Acceptor线程来负责监听工作。这个线程的工作只有一个，调用Java NIO接口在该端口上select connect事件，获取新建的连接后，封装成IoSession，交由后面的Processor线程处理。在客户端，也有一个类似的，叫Connector的线程与之相对应。这两类线程的数量只有1个，外界无法控制这两类线程的数量。</p>
+
+<p>TCP实现的代码可以参考org.apache.mina.core.polling.AbstractPollingIoAcceptor的内部类Acceptor和org.apache.mina.core.polling.AbstractPollingIoConnector的内部类Connector。</p>
+
+<h2>Processor线程</h2>
+
+<p>Processor线程主要负责具体的IO读写操作和执行后面的IoFilterChain和IoHandler逻辑。Processor线程的数量N默认是CPU数量+1，可以通过配置参数来控制其数量。前面进来的IoSession会被分配到这N个Processor线程中。默认的SimpleIoProcessorPool的策略是session id绝对值对N取模来分配。</p>
+
+<p>每个Porcessor线程中都维护着一个selector，对它维护的IoSession集合进行select，然后对select的结果进行遍历，逐一处理。像前面提到的，读取数据，以事件的形式通知后面IoFilterChain；以及对写请求队列的flush操作，都是在这类线程中来做的。</p>
+
+<p>通过将session均分到多个Processor线程里进行处理，可以充分利用多核的处理能力，减轻select操作的压力。默认的Processor的线程数量设置可以满足大部分情况下的需求，但进一步的优化则需要根据实际环境进行测试。</p>
+
+<h1>线程模型</h1>
+
+<h2>线程模型原理</h2>
+
+<p>从单一的Processor线程内部来看，IO请求的处理流程是单线程顺序处理的。前面也提到过，当Process线程select了一批就绪的IO请求后，会在线程内部逐一对这些IO请求进行处理。处理的流程包括IoFilter和IoHandler里的逻辑。当前面的IO请求处理完毕后，才会取下一个IO请求进行处理。也就是说，如果IoFilter或IoHandler中有比较耗时的操作的话（如：读取数据库等），Processor线程将会被阻塞住，后续的请求将得不到处理。这样的情况在高并发的服务器下显然是不能容忍的。于是，Mina通过在处理流程中引入线程池来解决这个问题。</p>
+
+<p>那么线程池应该加在什么地方呢？正如前面所提到过的：IoFilterChain是Mina的扩展点。没错，Mina里是通过IoFilter的形式来为处理流程添加线程池的。Mina的线程模型主要有一下这几种形式：</p>
+
+<center>
+  <img src="http://i.6.cn/cvbnm/25/fc/8d/ef9f26650f7b167878bdbbabea07bd3d.png" alt="mina-thread-model" title="mina-thread-model" width="902" height="653" />
+</center>
+
+
+<p>第一种模型是单线程模型，也是Mina默认线程模型。也就是Processor包办了从底层IO到上层的IoHandler逻辑的所有执行工作。这种模型比较适合于处理逻辑简单，能快速返回的情况。</p>
+
+<p>第二种模型则是在IoFilterChain中加入了Thread Pool Filter。此时的处理流程变为Processor线程读取完数据后，执行IoFilterChain的逻辑。当执行到Thread Pool Filter的时候，该Filter会将后续的处理流程封装到一个Runnable对象中，并交由Filter自身的线程池来执行，而Processor线程则能立即返回来处理下一个IO请求。这样如果后面的IoFilter或IoHandler中有阻塞操作，只会引起Filter线程池里的线程阻塞，而不会阻塞住Processor线程，从而提高了服务器的处理能力。Mina提供了Thread Pool Filter的一个实现：ExecutorFilter。</p>
+
+<p>当然，也没有限制说chain中只能添加一个ExecutorFilter，开发者也可以在chain中加入多个ExecutorFilter来构成第三种情况，但一般情况下可能没有这个必要。</p>
+
+<h2>请求的处理顺序</h2>
+
+<p>在处理流程中加入线程池，可以较好的提高服务器的吞吐量，但也带来了新的问题：请求的处理顺序问题。在单线程的模型下，可以保证IO请求是挨个顺序地处理的。加入线程池之后，同一个IoSession的多个IO请求可能被ExecutorFilter并行的处理，这对于一些对请求处理顺序有要求的程序来说是不希望看到的。比如：数据库服务器处理同一个会话里的prepare，execute，commit请求希望是能按顺序逐一执行的。</p>
+
+<p>Mina里默认的实现是有保证同一个IoSession中IO请求的顺序的。具体的实现是，ExecutorFilter默认采用了Mina提供的OrderedThreadPoolExecutor作为内置线程池。后者并不会立即执行加入进来的Runnable对象，而是会先从Runnable对象里获取关联的IoSession(这里有个down cast成IoEvent的操作)，并将Runnable对象加入到session的任务列表中。OrderedThreadPoolExecutor会按session里任务列表的顺序来处理请求，从而保证了请求的执行顺序。</p>
+
+<p>对于没有顺序要请求的情况，可以为ExecutorFilter指定一个Executor来替换掉默认的OrderedThreadPoolExecutor，让同一个session的多个请求能被并行地处理，来进一步提高吞吐量。</p>
+
+<h1>参考资料：</h1>
+
+<p>http://mina.apache.org/conferences.data/Mina_in_real_life_ASEU-2009.pdf</p>
+
+<p>http://mina.apache.org/documentation.data/ACAsia2006.pdf</p>
+
+<p>Mina源码</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[异步环境下的异常处理]]></title>
+    <link href="http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment/"/>
+    <updated>2012-01-19T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment</id>
+    <content type="html"><![CDATA[<p>webgame容器的设计中遇到了一个问题，如何处理回调中未捕获的异常，维护系统状态的完整性。而这个问题的根源来自于node.js的异步回调模式。</p>
+
+<p>先回想一下，熟悉的tomcat容器中是如何处理未捕获的异常的。</p>
+
+<p>tomcat的模型比较简单，每个请求由一个单独的线程来处理，采用的是同步阻塞的模式。当一个请求到达后，请求会通过层层filter，最终到达servlet的service的方法。当请求从servlet的处理返回后，再按原路经过层层filter返回。整个处理的过程，都是在同一个线程，同一次函数调用周期中完成的。也就是说，完全可以在请求处理的入口处，用一个try...catch来捕获处理过程中抛出的所有的未捕获异常，并且在这个入口处，是可以获取到这个请求的上下文的，可以由此来给客户端返回错误的响应。</p>
+
+<p>而在node.js中，采用的是异步回调的模式，处理函数返回，并不代表处理流程完成，可能还有后续的处理逻辑在回调函数中等待触发。而回调函数的触发可能会是在另外一个函数调用周期中，所以在当次请求的入口处包裹try...catch并不总是能捕捉到回调函数中抛出来的异常。但从另一面来看，回调函数最终一定是由node.js中处理任务的主线程来触发的，所以node可以帮我们捕捉到这些异常，反馈到开发者手里也就是我们所熟悉的uncaughtException事件。但在这种情况下，回调函数的执行环境是node的主线程，所以已无法获取到对应的请求上下文，也就无法给客户端反馈出错的信息了。</p>
+
+<!--more-->
+
+
+<p>作为对比，我简单的考察了一下java中的几个web容器提供异步请求处理接口的例子。</p>
+
+<h1>tomcat comet</h1>
+
+<p>tomcat comet的处理手法比较简单粗暴，由容器管理线程的分配调度，只暴露给用户一个简单的event接口，让用户根据event的类型做处理。整个流程还是控制在容器的管理下的，即使event接口中，用户抛出了未捕获异常，容器还是可以捕捉到，并能知晓请求的上下文。代码框架如下：</p>
+
+<p>```java</p>
+
+<pre><code>/**
+ * Process the given Comet event.
+ *
+ * @param event The Comet event that will be processed
+ * @throws IOException
+ * @throws ServletException
+ */
+public void event(CometEvent event)
+    throws IOException, ServletException {
+    HttpServletRequest request = event.getHttpServletRequest();
+    HttpServletResponse response = event.getHttpServletResponse();
+    if (event.getEventType() == CometEvent.EventType.BEGIN) {
+    } else if (event.getEventType() == CometEvent.EventType.ERROR) {
+    } else if (event.getEventType() == CometEvent.EventType.END) {
+    } else if (event.getEventType() == CometEvent.EventType.READ) {
+    }
+}
+</code></pre>
+
+<p>```</p>
+
+<h1>jetty continuation</h1>
+
+<p>jetty continuation的处理手法更加粗暴，通过Continuation实例的suspend方法来让当前请求挂起，并将处理线程归还给容器，等待超时或resume方法被调用时再继续执行该请求。</p>
+
+<p>实现的手法是suspend方法内部会抛除一个RetryRequeset的RuntimeException，以此来终止当前请求的处理流程（具体参考SelectChannelConnector.RetryContinuation）。外层容器捕获该异常后，将请求加入超时队列，线程退还给容器。等到超时和resume方法被调用后，请求会从头再执行一次（包括前面的filter）。所以，continuation要求该类请求所经过的filter和servlet必须是幂等的（可以重复进入，不影响状态）。因为continuation其实是把request的流程再执行一遍，所以它实质上还是同步的模式，所以对未捕获的异常处理等同于tomcat的传统处理方式。</p>
+
+<p>continuation的示例如下：</p>
+
+<p>```java
+private void doPoll(HttpServletRequest request, AjaxResponse response)
+{</p>
+
+<pre><code>HttpSession session = request.getSession(true);
+
+synchronized (mutex)
+{
+    Member member = (Member)chatroom.get(session.getId());
+
+    // Is there any chat events ready to send?
+    if (!member.hasEvents())
+    {
+        // No - so prepare a continuation
+        Continuation continuation = ContinuationSupport.getContinuation(request, mutex);
+        member.setContinuation(continuation);
+
+        // wait for an event or timeout
+        continuation.suspend(timeoutMS);
+    }
+    member.setContinuation(null);
+
+    // send any events
+    member.sendEvents(response);
+}
+</code></pre>
+
+<p>}
+```</p>
+
+<h1>servlet 3.0</h1>
+
+<p>servlet 3.0中也加入了异步处理的支持，由ServletRequest对象通过startAsync方法获取一个AsyncContext，将请求处理变为异步化，当前的处理函数可以直接结束返回，开发者可以另外开一个线程，通过AsyncContext继续完成后续的响应。这个模型跟node.js是比较类似的。因为处理线程是用户派生的，如果有未捕获异常，容器是不知晓的。而因为异常，AsyncContext的complete或dispatch方法没有执行，将会导致请求无法返回，这点跟node也是类似的。</p>
+
+<p>最后回头看看，在node的异步处理的模式下，容器对回调的控制较弱。一般的形式通过传递回调函数，由开发者代码调用来告知容器处理流程的真正结束，connect，nodeunit等都是用类似的手法来处理。如果回调函数中因为未捕获异常而退出，则后续流程会因此而丢失。做为容器来说，也有可能因为用户的不良代码，忘了调用回调函数而丢掉后面的流程。</p>
+
+<p>暂时也没想到比较好的解决办法，目前的想法是设置回调超时。在每个需要用户代码调用回调的接口添加一个超时记录，用一个类似bitmap的东西来维护reqId和超时记录的映射关系。如果用户代码在指定时间内调用回调函数，则根据reqId清空超时记录;否则对该次请求做超时处理。</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[RedDwarf服务器测试环境搭建]]></title>
+    <link href="http://codingcat.net/blog/2011/12/03/reddwarf-enviroment/"/>
+    <updated>2011-12-03T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2011/12/03/reddwarf-enviroment</id>
+    <content type="html"><![CDATA[<p>分析RD服务器代码时，经常需要跑一跑，以验证分析的结果和猜测。在eclipse下搭了这个环境。简单点，直接上图吧，有图 有真相，说明基本上也能省了。</p>
+
+<!--more-->
+
+
+<p>入口代码设置</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/3a/c3/37/541e0e3c62bd982ab65269db701d0ded.jpg" title="sgs1"/>
+</center>
+
+
+<p>参数设置</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/21/9a/4a/532700adec8777f03d185941956c7270.jpg" title="sgs2" />
+</center>
+
+
+<p>代码入口是com.sun.sgs.impl.kernel.Kernel，配置文件主要在app.properties，指向它就可以了，bdb运行环境依赖的native包需要指明一下。如果用的是0.10.2的话，用的bdb的je（java edition）版本，native也免了。可以加个sgs-logging.properties文件来设一下日志level，都可以从SGS_HOME/conf目录下拷的。</p>
+
+<p>app.properties文件内容</p>
+
+<p>```java</p>
+
+<pre><code>com.sun.sgs.app.name=Hello
+com.sun.sgs.app.listener=test.Hello
+com.sun.sgs.app.root=data
+com.sun.sgs.services=test.MyServiceImpl
+com.sun.sgs.txn.timeout=300000
+com.sun.sgs.node.type=coreServerNode
+com.sun.sgs.server.host=localhost
+</code></pre>
+
+<p>```</p>
+
+<p>后面两个如果是单节点的模式的话可以不要。具体可以参考<a href="http://www.reddwarfserver.org/javadoc/current/server-all/com/sun/sgs/impl/kernel/doc-files/config-properties.html">config-properties</a>。</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[RedDwarf服务器数据模块分析]]></title>
+    <link href="http://codingcat.net/blog/2011/12/03/reddwarf-data-model-analytics/"/>
+    <updated>2011-12-03T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2011/12/03/reddwarf-data-model-analytics</id>
+    <content type="html"><![CDATA[<p>这段时间在分析RedDwarf服务器的代码，以下简称RD。RD最吸引我的地方就是水平扩展的能力了。一个游戏服务器，进行水平扩展，不可避免的一个问题就是分布式数据访问，即不同的服务器节点之间的数据共享问题。如：一个游戏服务器节点上的玩家要于另外一个节点上的玩家进行交互，中间的数据如何保证事务性，延时如何满足需求等。</p>
+
+<!--more-->
+
+
+<h2>RedDwarf的数据层的工作原理</h2>
+
+<p>RD将数据共享的重任委托给了一个强大的数据层。RD将需要共享的对象定义成ManagedObject（以下简称MO）。MO可以通过DataManager提供的接口持久化到统一的数据层，各个服务器节点再通过统一的数据层来访问共享对象。</p>
+
+<p>RD的数据服务器层简单的来看可以分为三层。DataManager是一个接口，具体实现实际是DataServiceImpl。所以三层结构关系主要如下：DataService -> DataStore ->DB。</p>
+
+<ul>
+<li><p>DataService主要为开发者提供了数据层的操作接口;</p></li>
+<li><p>DataStore则为中间层，主要屏蔽主从节点的差异以及底层数据库实现的差异;</p></li>
+<li><p>DB层负责与具体的数据库进行交互，目前主要有两种实现BDB和JE。在目前RD版本中，只有一个中心节点负责运行数据库，其他的从属节点实际上都是通过远程调用委托中心节点进行数据库操作。</p></li>
+</ul>
+
+
+<p>RD在多节点模式下运行时，有一个coreServer的中心节点需要首先起起来。coreServer的一项重要任务就是启动DataStoreImpl，后者将建立中心数据库（默认为BDB），并启动一个DataStoreServer实例，将代理DataStore的远程接口暴露出去。而之后的附属节点appServer启动之后，会建立一个DataStoreClient的实例来根据配置文件连接中心节点的DataStoreServer。DataClientClient实现了DataStore接口，所以它实际上充当的是DataStore的角色，将本节点的DataService的请求转交给中心节点的DataStoreServer。</p>
+
+<p>就是通过这样的结构，RD将所有从节点的数据请求都转移到了中心节点上，再由中心节点进行统一的事务调度，避免了分布式事务。</p>
+
+<h2>中心节点的事务</h2>
+
+<p>那么，在中心节点里，RD又是怎么处理数据库事务的呢？</p>
+
+<p>在讲这个之前，需要先讲一下ManagedObject的原理。ManagedObject是一个标记接口，跟Serializable一样。RD要求所有MO都实现ManagedObject接口，同时也要实现Serializable接口，因为MO最终需要序列化再存到数据库里的。</p>
+
+<p>每一个MO，在DataService内部实际上会有一个ManagedObjectReference（以下简称MOR）实例与之对应（无论是createReference和getBinding操作获得）。MOR主要维护的是objectId（即oid）到实际的java object的映射关系，底层数据库存的其实也就是oid->object的key/value对。MOR内部也会缓存一个与它关联的oid->object的映射。只有第一次调MOR的get方法时，才会真正到数据库里去取object的数据并反序列化，并把结果缓存到MOR内部。之后的所有get操作，都会从缓存里取，以提高速度和降低数据库负担。这就相当于本地有了个缓存。</p>
+
+<p>那RD怎么保证这个缓存和DB的一致性呢？即如果别的节点改变了MO的内容，当前节点怎么得知呢？这也就是前面提到的数据库事务的问题了。</p>
+
+<p>RD很聪明，把这个艰巨的任务交给了底层的DB。RD底层依赖的是BDB和JE数据库，它采用的默认锁模式是，READ_COMMITED=false和READ_UNCOMMITED（具体可以参考<a href="http://docs.oracle.com/cd/E17277_02/html/java/com/sleepycat/je/LockMode.html">BDB LockMode</a>和BdbEnvironment的构造函数）。简单的来说，RD对底层的DB的读操作会hold住该数据的一个读锁，直至事务结束。后面其他的事务如果也申请读锁是可以的，但申请写锁，则需要等待读事务结束后才能继续或者抛出TimeOut异常。从而保证了数据的事务性访问。我们所熟悉的DataManager的MarkForUpdate方法，实际上也是向数据库申请了一个写锁，直至事务结束后释放。</p>
+
+<p>这样带来的一个问题就是，热门的数据可能会有多个事务竞争，产生瓶颈。不过RD的模型本来就建议采用短事务，默认事务时长是100ms以内，数据访问冲突的超时时间是事务超时时间的1/10,所以一般的游戏，除了FPS或即时的MMORPG，应该还是可以满足需求的。</p>
+
+<h2>代码实验</h2>
+
+<p>说了那么多，都是从代码里看的，木得实际依据，为了证实我们的猜测，上点代码吧。</p>
+
+<p>测试环境，两台RD服务器节点（一个coreServer和一个appServer）。</p>
+
+<p>coreServer配置app.properties</p>
+
+<p><code>java
+com.sun.sgs.app.name=Hello
+com.sun.sgs.app.listener=test.Hello
+com.sun.sgs.app.root=data
+com.sun.sgs.services=test.MyServiceImpl
+com.sun.sgs.txn.timeout=300000
+com.sun.sgs.node.type=coreServerNode
+com.sun.sgs.server.host=localhost
+</code></p>
+
+<p>appServer配置app.properties</p>
+
+<p><code>java
+com.sun.sgs.app.name=Hello1
+com.sun.sgs.app.listener=test.Hello
+com.sun.sgs.app.root=data
+com.sun.sgs.services=test.MyServiceImpl
+com.sun.sgs.txn.timeout=300000
+com.sun.sgs.node.type=appNode
+com.sun.sgs.server.host=localhost
+</code></p>
+
+<p>为了展现访问冲突，有个事务需要中途sleep一阵子，所以把事务超时设为300s。</p>
+
+<p>在coreServer的MyServiceImpl的doReady方法里加入以下代码</p>
+
+<p>```java</p>
+
+<pre><code>this.scheduler.scheduleTask(new AbstractKernelRunnable(name) {
+    @Override
+    public void run() throws Exception {
+        String name = "chang";
+
+        MyData bd = (MyData)txnProxy.getService(DataService.class).getBinding(name);
+        System.out.println(new Date() + " before:" + bd.getA());
+        Thread.sleep(10000);
+        MyData ad = (MyData)txnProxy.getService(DataService.class).getBinding(name);
+        System.out.println(new Date() + " after:" + ad.getA());
+    }
+
+}, this.txnProxy.getCurrentOwner());
+</code></pre>
+
+<p>```</p>
+
+<p>主要做的事情就是先读一个事先绑定好了的对象，观察它的值。然后休眠10s，再取一遍，观察值有没有变。</p>
+
+<p>appServer的MyServiceImpl的doReady方法里加入以下代码</p>
+
+<p>```java</p>
+
+<pre><code>this.scheduler.scheduleTask(new AbstractKernelRunnable(name) {
+    @Override
+    public void run() throws Exception {
+        System.out.println(new Date() + " begin.");
+        String name = "chang1";
+        MyData data = (MyData)txnProxy.getService(DataService.class).getBinding(name);
+        txnProxy.getService(DataService.class).markForUpdate(data);
+        data.setA(data.getA() + 1);
+        System.out.println(new Date() + " finish.");
+    }
+
+}, this.txnProxy.getCurrentOwner());
+</code></pre>
+
+<p>```</p>
+
+<p>主要做的事情是取同一个对象，然后markForUpdate一下，然后修改对象的字段。
+运行后，从输出结果的时间序列上看，appServer的事务会一直被堵着，直到coreServer的after输出完毕后，才能接着往下执行（这里因为加长了超时时间，所以不会冲突超时）。</p>
+
+<p>那如果不做markForUpdate，直接修改会怎么样呢？其实效果也一样的，RD默认开启了自动检测修改，会将没有markForUpdate的MO设为MAYBE_MODIFIED状态，在事务提交时，会检测该MO是否有被修改过（主要原理是，get的时候做一下序列化，commit的时候再做一下序列化，两次序列化的结果进行比较看是否有改变），如果有改变的话就提交数据库，这时就会涉及到数据库写操作，一样会被阻塞住。
+那么把appServer的</p>
+
+<p><code>java
+txnProxy.getService(DataService.class).markForUpdate(data);
+</code></p>
+
+<p>语句去掉。</p>
+
+<p>执行的结果可以看到appServer上的begin和finish都在coreServer的after之前打印了，难道是绕过了RD的事务了？其实不是的，因为appServer上的begin和finish都是在transaction task的run方法里的，而数据提交是在transaction task的run方法执行完成后进行的，所以当finish打印时，实际上还没开始MO的flush，所以还不会堵塞。为了验证这一点，可以在coreServer上的DataStoreServerImpl的
+<code>java
+public void setObjects(long tid, long[] oids, byte[][] dataArray)
+</code>
+方法里，
+<code>java
+store.setObjects(txn, oids, dataArray);
+</code></p>
+
+<p>语句前后加上日志，打印一下设置相应oid的请求的开始和结束时间，就可以直到，set请求其实是一直阻塞着，直到coreServer的事务完成后，才能往下执行的。</p>
+
+<h2>总结</h2>
+
+<p>简单的看，RedDwarf分布式事务主要分三步来实现。第一步先将所有节点的操作请求集中到中心节点，将原来并发的请求串行化。第二步则是为请求分配读写锁，授权给各个节点。第三部，各个节点按读写约定执行事务逻辑，commit后同步到中心节点，完成事务。使用的前提是所有事务都是短事务，否则将会影响后面事务的执行。</p>
+]]></content>
+  </entry>
+  
+</feed>

@@ -1,0 +1,290 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>从wordpress到octopress - Little Cat in Big World</title>
+  <meta name="author" content="changchang">
+
+  
+  <meta name="description" content="Little Cat in Big World, technology blog recording my coding life.">
+  <meta name="keywords" content="Technology blog, Coding, Little Cat in Big World">
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://codingcat.net/blog/2012/10/08/from-wordpress-to-octopress/">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href='http://fonts.googleapis.com/css?family=Lato:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="/javascripts/ender.js"></script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <link href="/atom.xml" rel="alternate" title="Little Cat in Big World" type="application/atom+xml">
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">Little Cat in Big World</a></h1>
+  
+    <h2>Wandering, Coding and Recording My Life.</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:codingcat.net" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">从wordpress到octopress</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2012-10-08T00:28:00+08:00" pubdate data-updated="true">Oct 8<span>th</span>, 2012</time>
+        
+         | <a href="#disqus_thread">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><h1>前记</h1>
+
+<p>兜兜转转，终于还是受不了wordpress的繁杂控制后台和二逼编辑器了，下定决心搬到octopress来了。相比wp，op更加清爽，更容易支配，更符合我的口味吧。比较喜欢op的组织结构，每篇文章都是一个文本文件，支持markdown格式，方便编辑和控制，好过面对冷冰冰的数据库。于是有了这个折腾之旅。</p>
+
+<!-- more -->
+
+
+<h1>octopress安装</h1>
+
+<p>octopress官网的文档写的够仔细了，照着倒腾很快就能让博客跑起来了，基本没什么问题。我是在本机搭的博客，采用的是ssh + Rsync。要发布出去的话，可以考虑github。</p>
+
+<h1>文章迁移</h1>
+
+<p>搬窝首先要考虑的是以前的家当怎么处理。虽然说开博至今没憋出什么像样的文章，但终究是自己业余时间的一点心血，能搬就搬过来吧。而且，像我这样从wp折腾到op的人应该也不少，靠谱的方案应该也不少。</p>
+
+<p>果不其然，google了一把，发现了不少成功案例。我采用的是<a href="http://blog.yorkxin.org/2011/11/26/import-from-wpcom-to-octopress/">yorkxin</a>同学的方案，迁移脚本的代码在<a href="https://gist.github.com/1394128">这里</a>。下面是主要的操作流程：</p>
+
+<ul>
+<li>首先先从wp的控制后台导出wp的备份文件，保存为wordpress.xml，放到op的根目录下。</li>
+<li>将上面gist里的脚本保存到op项目下的_import/wordpressdotcom.rb文件中。</li>
+<li>在op根目录下执行</li>
+</ul>
+
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>ruby -r "./_import/wordpressdotcom.rb" -e "Jekyll::WordpressDotCom.process"</span></code></pre></td></tr></table></div></figure>
+
+
+<p>这样就完成文章的迁移啦。</p>
+
+<p>转移后有的地方格式还是不大对的，先把前面几篇文章放上来吧，后面的慢慢调好了以后再说～</p>
+
+<h1>加入评论</h1>
+
+<p>op中没有自带评论功能，如果需要可以通过<a href="http://disqus.com/">DISQUS</a>来提供。过程也很简单。</p>
+
+<p>首先注册一个DISQUS帐号。剩下的就交给op吧，因为op本来就支持DISQUS。
+在_config.yml配置文件找到disqus的配置，填上你的disqus_short_name，再重新生成一下博客文章，发布，然后就可以看到你的文章后面加入了非常漂亮的评论模块啦，是不是很简单呢。</p>
+
+<h1>加入图片</h1>
+
+<p>op也没有上传图片的功能。这个也可以寻找一个第三方的图片服务就解决了。以前的博客图片大多是在本机上的，如果要放到网上，还得慢慢倒腾。</p>
+
+<h1>美化</h1>
+
+<p>op的样式感觉比以前wp上的要大气许多，现在还没来得及好好倒腾，后面再一步步把把小博美化美化吧。以后迁到github上也很方便，op本身就是一个git管理的工程～:)</p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">changchang</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2012-10-08T00:28:00+08:00" pubdate data-updated="true">Oct 8<span>th</span>, 2012</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/心情/'>心情</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2012/05/18/connect-framework/" title="Previous Post: connect源码分析--基础架构">&laquo; connect源码分析--基础架构</a>
+      
+      
+        <a class="basic-alignment right" href="/blog/2012/10/09/libev-framework/" title="Next Post: libev源码分析 -- 整体设计">libev源码分析 -- 整体设计 &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+  <section>
+    <h1>Comments</h1>
+    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+  </section>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2012/11/01/libeio-source-analytics/">libeio源码浅析</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/20/libev-watchers/">libev源码分析 -- 常用watcher</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/09/libev-framework/">libev源码分析 -- 整体设计</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/08/from-wordpress-to-octopress/">从wordpress到octopress</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/05/18/connect-framework/">connect源码分析--基础架构</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+<section>
+  <h1>Categories</h1>
+    <ul id="category-list"><li><a href='/blog/categories/basic'>Basic (1)</a></li><li><a href='/blog/categories/c-c-'>C/C++ (3)</a></li><li><a href='/blog/categories/game'>Game (2)</a></li><li><a href='/blog/categories/java'>Java (4)</a></li><li><a href='/blog/categories/javascript'>Javascript (1)</a></li><li><a href='/blog/categories/nodejs'>nodejs (5)</a></li><li><a href='/blog/categories/svn-git'>svn/git (1)</a></li><li><a href='/blog/categories/心情'>心情 (1)</a></li></ul>
+</section>
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2012 - changchang -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+<script type="text/javascript">
+      var disqus_shortname = 'codingcat';
+      
+        
+        // var disqus_developer = 1;
+        var disqus_identifier = 'http://codingcat.net/blog/2012/10/08/from-wordpress-to-octopress/';
+        var disqus_url = 'http://codingcat.net/blog/2012/10/08/from-wordpress-to-octopress/';
+        var disqus_script = 'embed.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+
+
+
+
+
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-35967317-1']);
+  _gaq.push(['_trackPageview']);
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+</body>
+</html>

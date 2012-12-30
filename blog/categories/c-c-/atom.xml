@@ -1,0 +1,538 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: C/C++ | Little Cat in Big World]]></title>
+  <link href="http://codingcat.net/blog/categories/c-c-/atom.xml" rel="self"/>
+  <link href="http://codingcat.net/"/>
+  <updated>2012-11-16T09:56:32+08:00</updated>
+  <id>http://codingcat.net/</id>
+  <author>
+    <name><![CDATA[changchang]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[libeio源码浅析]]></title>
+    <link href="http://codingcat.net/blog/2012/11/01/libeio-source-analytics/"/>
+    <updated>2012-11-01T18:31:00+08:00</updated>
+    <id>http://codingcat.net/blog/2012/11/01/libeio-source-analytics</id>
+    <content type="html"><![CDATA[<p><a href="http://software.schmorp.de/pkg/libeio.html">libeio</a>是用C开发的高效异步IO库，填补了普通文件没有异步接口的空白。它的作者也是Marc Lehmann，所以它的整体设计风格和libev还是有几分相似的。本文主要记录一下近期对libeio源码分析的心得，作为分析libuv的基础。关于linux下另外一些aio的实现方案，如glibc和kernel native aio，以及libeio背后的一些八卦等，在<a href="http://cnodejs.org/topic/4f16442ccae1f4aa270010a7">这篇文章</a>和<a href="http://hi.baidu.com/_kouu/item/2b3cfecd49c17d10515058d9">这篇文章</a>都有比较深入的分析，这里就不赘述了。</p>
+
+<!-- more -->
+
+
+<h1>libeio示例</h1>
+
+<p>按照惯例，我们还是先上一个简单的例子，看一下libeio的基本工作流程吧。</p>
+
+<p>```c</p>
+
+<pre><code>#include&lt;stdio.h&gt;
+#include&lt;eio.h&gt;
+
+void want_poll () {
+    printf ("I want poll\n");
+}
+
+void done_poll () {
+    printf ("I done poll\n");
+}
+
+int res_cb (eio_req *req) {
+  printf ("res_cb(%d|%s) = %d\n", req-&gt;type, req-&gt;data ? req-&gt;data : "?", EIO_RESULT (req));
+
+  if (req-&gt;result &lt; 0)
+    abort ();
+
+  return 0;
+}
+
+int main(void) {
+    if (eio_init (want_poll, done_poll)) {
+        printf ("fail to init eio.\n");
+        abort ();
+    }
+
+    eio_mkdir ("eio-test-dir", 0777, 0, res_cb, "mkdir");
+
+    printf ("\nentering event loop\n");
+    while (eio_nreqs ()) {
+        printf ("eio_poll () = %d\n", eio_poll ());
+    }
+    printf ("leaving event loop\n");
+
+    return 0;
+}
+</code></pre>
+
+<p>```</p>
+
+<p>这个例子是从官方demon简化而来的。所做的事情是在当前目录下创建一个eio-test-dir的目录，然后轮询等待它执行完毕。</p>
+
+<h1>libeio工作原理</h1>
+
+<p>libeio主要是通过线程池来模拟异步操作，大致流程如下图所示：</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/dc/4b/1b/51f2c6bc78aaff156a5f09ee5c7dac65.png" title="libeio-arch" />
+</center>
+
+
+<p>在主线程中可以通过libeio提供的异步接口发起请求，如例子中的eio_mkdir。之后请求的信息和完成后的回调函数会封装成eio_req对象，存放到req_queue队列中。线程池中的工作线程会从eio_queue中取出请求来处理。这里将会调用相关的系统接口，可能会发生阻塞。工作线程处理完毕后，将结果保存在eio_req对象中，并将其填入res_queue中。而主线程要做的就是调用eio_poll来处理res_queue中就绪的请求，触发其中的回调函数。</p>
+
+<h1>主要参与者</h1>
+
+<h3>eio_init</h3>
+
+<p>eio_init是libeio库的初始化函数，它的主要工作就是初始化libeio中的一些全局结构，比如：req_queue，res_queue，以及各种互斥量等。req_queue和res_queue的结构是一样的，定义如下：</p>
+
+<p>```c</p>
+
+<pre><code>typedef struct {
+    ETP_REQ *qs[ETP_NUM_PRI], *qe[ETP_NUM_PRI]; /* qstart, qend */
+    int size;
+} etp_reqq;
+</code></pre>
+
+<p>```</p>
+
+<p>这是一个二维的链表，第一维是优先级，第二维是eio_req对象的列表。工作线程和eio_poll会根据优先级先后来队列中的eio_req对象。这两个队列都会在多线程间共享，分别由reqlock和reslock两个互斥量来保证互斥访问。</p>
+
+<p>eio_init的另一个工作就是保存外界传入的两个回调函数：want_poll和done_poll。这两个函数都是边缘触发函数，具体的作用和触发时机如下：</p>
+
+<ul>
+<li><p>want_poll 在res_queue从空转为非空的时候被触发，表示libeio中有异步请求已就绪，请求外界调用eio_poll来处理。want_poll一般是在工作线程内被调用。</p></li>
+<li><p>done_poll 则刚好相反，是在res_queue从非空转成空时被触发，表示libeio中所有就绪的异步请求都已处理完毕。done_poll在调用eio_poll的那个线程中被调用（一般是主线程）。</p></li>
+</ul>
+
+
+<p>这两个函数是在已获取了互斥量的上下文中被调用了，所以不能在这两个函数中调用eio相关的函数，更多的是通过事件的形式通知另外的线程来做后续工作。</p>
+
+<h3>eio_OPERATE</h3>
+
+<p>eio_OPERATE是libeio封装的异步操作<a href="http://pod.tst.eu/http://cvs.schmorp.de/libeio/eio.pod#HIGH_LEVEL_REQUEST_API">接口</a>，如：eio_mkdir, eio_read等。</p>
+
+<p>虽然这些异步接口功能各异，但主要的流程都是相似的，如eio_mkdir的代码：</p>
+
+<p>```c</p>
+
+<pre><code>eio_req *eio_mkdir (const char *path, mode_t mode, int pri, eio_cb cb, void *data)
+{
+    REQ (EIO_MKDIR); PATH; req-&gt;int2 = (long)mode; SEND;
+}
+</code></pre>
+
+<p>```</p>
+
+<p>前面的代码都是构造eio_req对象，最后的SEND宏则是调用etp_submit函数，将请求加入到req_queue队列中，关键代码如下：</p>
+
+<p>```c</p>
+
+<pre><code>X_LOCK (reqlock);
+++nreqs;
+++nready;
+reqq_push (&amp;req_queue, req);
+X_COND_SIGNAL (reqwait);
+X_UNLOCK (reqlock);
+
+etp_maybe_start_thread ();
+</code></pre>
+
+<p>```</p>
+
+<p>先获取reqlock，更新相应的计数，将请求对象入队，唤醒wait的工作线程等。最后的etp_maybe_start_thread函数则是检查是否要创建新的工作线程。工作线程的默认数量是4,可以通过eio_set_min_parallel和eio_set_max_parallel配置。</p>
+
+<h3>请求对象</h3>
+
+<p>请求对象eio_req是对所有异步请求的抽象。所有上层的请求，都会统一归纳到eio_req的结构体上，并通过req_queue和res_queue在不同的线程之间流转。底层的代码只对eio_req进行处理。从而实现了上下层代码之间的解耦。</p>
+
+<p>在这里eio_req的多态，实现手法有点粗暴。作者将libeio中所有请求所需的信息的并集归纳成了eio_req，所以这个结构体有点庞大，有的字段在某些请求中是不需要的。另外为了使字段适用于所有类型的请求，也采用了比较泛的字段命名，诸如：ptr1, ptr2, int1, int2, int3等。作者也在这些字段旁边加了比较详细的注释作为补救。所幸的是eio_req对象都是由libeio内部创建，内部维护，对外基本上只是对其errorno和result等字段进行只读操作。具体的代码就不贴了，可以在eio.c中查看定义。</p>
+
+<h3>处理线程</h3>
+
+<p>处理线程的代码在etc_proc中定义。基本上就是一个无限循环，不断地从req_queue中取任务出来处理。如果没有任务则在reqwait上wait。处理请求的代码如下：</p>
+
+<p>```c</p>
+
+<pre><code>ETP_EXECUTE (self, req);
+
+X_LOCK (reslock);
+
+++npending;
+
+if (!reqq_push (&amp;res_queue, req) &amp;&amp; want_poll_cb)
+    want_poll_cb ();
+
+etp_worker_clear (self);
+
+X_UNLOCK (reslock);
+</code></pre>
+
+<p>```</p>
+
+<p>ETP_EXECUTE是处理具体请求的地方，也是发生阻塞的主要地方。主体代码不复杂，但挺长。主要是一个巨大无比的switch/case，根据eio_req中的type判断请求类型，之后就是执行相应的同步接口，并将结果保存到eio_req中返回。</p>
+
+<p>接下来的代码就是获取相关的互斥量，并将处理完毕的eio_req存放入res_queue中。如果有需要，则触发want_poll回调。</p>
+
+<h3>eio_poll</h3>
+
+<p>主要是完成res_queue中就绪的eio_req对象的处理。ETP_FINISH宏中会调用eio_req中绑定的回调函数。</p>
+
+<p>```c</p>
+
+<pre><code>for (;;)
+{
+    ETP_REQ *req;
+
+    etp_maybe_start_thread ();
+
+    X_LOCK (reslock);
+    req = reqq_shift (&amp;res_queue);
+
+    if (req)
+    {
+        --npending;
+
+        if (!res_queue.size &amp;&amp; done_poll_cb)
+            done_poll_cb ();
+    }
+
+    X_UNLOCK (reslock);
+
+    if (!req)
+        return 0;
+
+    X_LOCK (reqlock);
+    --nreqs;
+    X_UNLOCK (reqlock);
+
+    // ...
+
+    int res = ETP_FINISH (req);
+    if (ecb_expect_false (res))
+        return res;
+
+    //...
+}
+</code></pre>
+
+<p>```</p>
+
+<h1>总结</h1>
+
+<p>总的来看，libeio的实现并不复杂，通过线程池模拟异步，通过eio_req和req_queue，res_queue对代码进行解耦。一般要设计一个异步库的实现大致思路也是如此了吧。但同时它也很实用。它基本支持了POSIX的所有文件操作接口，没有引入过多的复杂性，底层的依赖的也只有pthread而已。所以它具有较好的可移植性，使用非常方便。</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[libev源码分析 -- 常用watcher]]></title>
+    <link href="http://codingcat.net/blog/2012/10/20/libev-watchers/"/>
+    <updated>2012-10-20T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2012/10/20/libev-watchers</id>
+    <content type="html"><![CDATA[<p>在上一篇文章里，我们分析了libev整体设计思想和主循环的工作原理，也提到了watcher是衔接开发者代码的主要入口。watcher与开发者最接近，也与具体事件处理逻辑最接近。所以，watcher的具体实现，与性能的关系也相当密切。下面，我们就来分析一下，libev中常用的几种watcher的设计与实现。</p>
+
+<!-- more -->
+
+
+<h1>ev_io</h1>
+
+<h2>ev_io与底层io</h2>
+
+<p>ev_io的主要使命就是监听并响应指定文件描述fd上的读写事件。对fd的监听工作，主要委托给底层的io库来完成。libev对目前比较流行的io库都提供了支持，如：select, epoll以及windows的iocp等。在这里libev使用了Adaptor模式，通过统一的适配层隐藏了底层io库的细节。在loop初始化的时候（loop_init），会根据配置将函数指针绑定到底层的io库函数对应的适配代码上。所以，开发者可以很方便的把代码切换到不同的底层实现上。相关的函数有：backend_modify，向底层库注册fd事件，如：epoll的epoll_ctl；backend_poll，向底层库轮询fd上是否有感兴趣的事件发生，如：epoll的epoll_wait。适配器实现的代码可以在ev_LIB.c中看到，LIB是io库的名字，如：ev_epoll.c，ev_win32.c等。</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/c6/ef/2a/ac177b3435994c7088ef9eb3d32394f2.png" alt="ev_io层次结构图" />
+</center>
+
+
+<h2>ev_io的结构</h2>
+
+<p>```c</p>
+
+<pre><code>typedef struct ev_io
+{
+  EV_WATCHER_LIST (ev_io)
+
+  int fd;     /* ro */
+  int events; /* ro */
+} ev_io;
+</code></pre>
+
+<p>```
+其中，EV_WATCHER_LIST是EV_WATCHER结构的链表节点结构。fd是监听的文件描述符，events是感兴趣的事件。
+ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了。ev_io的实例被存储在loop->anfds的结构中。anfds的结构如下图所示：</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/9c/37/cc/91f3e08d93a0d2f41b936c6f2f4895f5.png" alt="anfds结构图"/>
+</center>
+
+
+<p>anfds其实是一个数组，它使用fd作为下标，数组中的元素是一个ANFD的结构。ANFD是一个维护fd信息的结构体。其中，events记录了当前fd上感兴趣的事件的记录。head是watcher列表的头指针，这个列表就是在这个fd上注册的watcher列表。当fd的大小超出了anfds的容量，anfds会进行相应的扩展。</p>
+
+<p>anfds可以理解成一个简易的map，记录了fd与ANFD结构的映射关系。虽然，fd的申请和释放操作会导致fd不一定是连续的，从而导致数组中出现空洞，但通过fd可以迅速获取到相应的watcher列表，这也许是用空间换取时间的一个考量吧。另一方面，因为fd的释放操作并不会发出通知，而系统分配fd总是采用可用的最小fd。所以如果一个fd在别处被释放，这个fd则很有可能被分配给随后打开的其他文件。而libev对这个过程是完全不知情的，所以它会傻傻的一直认为这个fd一直指向同一个文件，默默地服务着上面发生的事件。libev不负责管理fd的改变行为，而是把这个任务交给了外面，也就是说，如果外面fd发生了改变，需要调用ev_io_set或ev_io_init来重新设定fd与watcher的关系。</p>
+
+<h2>ev_io的插入</h2>
+
+<p>从前面的介绍我们知道，要通过libev来监听fd上的事件，得要先插入一个ev_io到libev的loop中。ev_io的插入操作被封装在ev_io_start函数中。毫无疑问，libev首先会根据fd找到对应的watcher列表，并将新watcher加入到列表中。接下来，会调用fd_change函数，将fd加入到loop->fdchanges中。fdchanges是一个简单的数组，记录的是当前注册事件有发生改变的fd。到此为止，新ev_io的插入完成，上面的所有操作时间代价都是O(1)。fdchanges的作用在下一个小节中进行分析。</p>
+
+<h2>ev_io的选取</h2>
+
+<p>前面我们已经向libev的loop中插入了一个ev_io，那么libev是怎么把这个ev_io注册到底层io并响应底层的io事件的呢？ 要回答这个问题，我们得先回到<a href="/blog/2012/10/09/libev-framework/">上一篇文章</a>。从ev_run流程图中可以看到，ev_io的选取由fd_reify和backend_poll这两个步骤来完成。</p>
+
+<p>fd_reify函数的工作主要是遍历fdchanges，将对应列表的watcher的events字段合并到ANFD结构的events字段。ANFD上如果新的events与原来监听的events不一致，则表示在这个fd上监听的事件集发生了变化，需要将fd和事件集合通过backend_modify注册到底层的io库。</p>
+
+<p>在循环的后面，则会调用backend_poll来检查fd上是否有注册的事件发生。如果有事件发生，则通过fd_event函数，遍历fd对应的watcher列表，比较每个watcher上的events字段与发生的事件event值，找出就绪的watcher添加到pendings中。</p>
+
+<p>最后，这些pendings中的watcher会在循环结束前调用ev_invoke_pending来统一触发。</p>
+
+<h2>ev_io的移除</h2>
+
+<p>ev_io的移除由ev_io_stop来完成。首先，会先检查该watcher是否在pendings列表中，如果是，则先从pendings中删除该watcher。pendings是一个数组，libev中的数组一般是以数组和元素数量来维护的。删除数组中的一个元素，只要把数组末尾的元素替换掉被删除的元素，并把元素数量减一就可以了，操作的时间复杂度是O(1) 。</p>
+
+<p>接下来就是通过fd找到watcher列表，从中删除这个watcher。这个操作需要遍历列表找到待删除的watcher，所以平均时间复杂度是O(n)。其中n是注册在fd上的watcher数量，一般这个数量不会太大。</p>
+
+<p>然后是把watcher的active标志位复位，并减少全局active的watcher计数。</p>
+
+<p>最后是把fd加入到fdchanges中，因为移除一个watcher，可能会改变fd上感兴趣的事件，所以要在下一轮循环中重新计算该fd上的事件集合。</p>
+
+<h1>ev_timer</h1>
+
+<h2>ev_timer的管理</h2>
+
+<p>ev_timer watcher是主要负责处理超时事件的watcher。这类watcher被存储在loop->timers中，它们的特点是，超时时间小的watcher会被先触发。所以，timers其实是一个按触发时间升序排序的优先队列，底层的数据结构是一个用数组实现的二叉或四叉最小堆（关于堆的定义请google之）。ev_timer watcher的active字段，维护的其实是watcher在堆中的下标，通过它可以快速在堆中定位到watcher。</p>
+
+<p>堆相关基本的堆操作有upheap和downheap。upheap操作是将一个节点上移到堆中合适的位置；downheap操作则刚好相反，将一个节点下移到堆中合适的位置。最小堆的特点是父节点的值比子节点的值都要小。通过这两个操作，可以调整堆中节点的位置，以满足最小堆的约束。它们的时间复杂度都是O(log(n))。有了这两个操作，便可以构建出watcher结构的常用操作了。</p>
+
+<ul>
+<li><p>获取超时的watcher。因为timers是一个以触发时间排序的最小堆，根部的watcher总是最先要触发的watcher。所以这个操作的主要工作就是比较根部watcher的触发时间，如果可以触发，则加入pendings队列。然后检查该watcher是否是repeat的。如果是则更新下一次触发时间，调用downheap操作将这个节点下移至合适的位置；否则直接删除该watcher。</p></li>
+<li><p>添加新的watcher。这无非就是一个入堆的操作。将新watcher添加到timers数组的末尾，再执行upheap操作，上升至合适的位置即可。</p></li>
+<li><p>删除watcher。将堆尾节点替换掉待删除节点，再根据情况用upheap或downheap操作来调整替换后节点到合适的位置。</p></li>
+</ul>
+
+
+<p>以上这些操作的时间代价都是O(log(n))。</p>
+
+<h2>timer的使用策略</h2>
+
+<p>在实际应用中，可能会出现频繁使用大量timer的场景。比如：为每个请求设置一个超时时间，在指定时间内得不到响应，则报错。如果为每一个请求创建一个watcher，则将产生大量不必要的空间和计算开销。在libev的官方文档中，提供了一个比较高效的<a href="http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod#Be_smart_about_timeouts">方法</a>。下面简单介绍一下这种方法的思路。</p>
+
+<p>可以使用一个双向链表来维护超时时间相同的timer，这里的timer可以理解为定时器的记录结构，比如：超时时间和超时的回调函数等。因为大家的超时时间是一样的，所以新的timer进来后，肯定是添加到队尾的。</p>
+
+<p>然后分配一个ev_timer watcher专门来处理这个链表的超时工作。watcher的超时时间设置的是链表第一个元素的超时时间。当超时发生后，按链表顺序触发超时的timer。如果timer是重复的，可以重新计算超时时间并加入到链表尾部；否则直接删除timer记录即可。然后再从链表首部获取下一次超时时间，重复上面的流程。</p>
+
+<p>采用这种方案，只需要使用一个ev_timer watcher来处理相同timeout时间的timer。而timer的增删操作最后其实就是链表的插入和删除操作，所以操作的时间代价都是O(1)。而timeout时间相同的约束，主要是要保证链表里的元素都是有序的，插入操作都是发生在链表的尾端。如果要取消某一个timer，因为是双向链表，也可以在O(1)时间内从链表内移除掉指定的节点。</p>
+
+<h1>ev_prepare, ev_check, ev_idle</h1>
+
+<p>从角色上来看，这三个类型的watcher其实都是事件循环的一个扩展点。通过这三个watcher，开发者可以在事件循环的一些特殊时刻获得回调的机会。</p>
+
+<ul>
+<li><p>ev_prepare 在事件循环发生阻塞前会被触发。</p></li>
+<li><p>ev_check 在事件循环阻塞结束后会被触发。ev_check的触发是按优先级划分的。可以保证，ev_check是同一个优先级上阻塞结束后最先被触发的watcher。所以，如果要保证ev_check是最先被执行的，可以把它的优先级设成最高。</p></li>
+<li><p>ev_idle 当没有其他watcher被触发时被触发。ev_idle也是按优先级划分的。它的语义是，在当前优先级以及更高的优先级上没有watcher被触发，那么它就会被触发，无论之后在较低优先级上是否有其他watcher被触发。</p></li>
+</ul>
+
+
+<p>这三类watcher给外部的开发者提供了非常便利的扩展机制，在这个基础上，开发者可以做很多有意思的事情，也对事件循环有了更多的控制权。具体到底能做些什么，做到什么程度，那就要看开发者们的想象力和创造力了：）</p>
+
+<h1>总结</h1>
+
+<p>ev_io和ev_timer应该是libev中使用的最多的watcher了，也是比较典型的watcher。从底层的实现上来看，处理得恰到好处，精明而干练，可谓独具匠心。好了，拍作者马屁的话就少说了，这一轮libev的代码分析也到此先告一段落了，在这说说感受吧。</p>
+
+<p>看libev的代码，最大的障碍应该是非里面漫天飞舞的宏莫属了。但把握了libev的大概结构后，知道哪些家伙长得比较像宏（比如：一些看似全局的变量），知道哪些宏要到什么地方找定义（比如：ev_vars.h，ev_wrap.h），事情就变得简单了。再回头想想，宏也是个不错的选择。第一，它是一个不错的代码解耦手段。上层代码依赖于宏，而宏在不同的环境下可以绑定到不同的底层代码，切换底层的代码而不会影响到上层代码。第二，它也是提高性能的途径。宏的绑定在预处理阶段完成，不会有额外的动态查找和函数调用开销。第三，也可以偷偷懒，用短小的宏代替一大坨代码，写的人省力，看的人也舒服，正所谓他好我也好，一举多得～</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[libev源码分析 -- 整体设计]]></title>
+    <link href="http://codingcat.net/blog/2012/10/09/libev-framework/"/>
+    <updated>2012-10-09T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2012/10/09/libev-framework</id>
+    <content type="html"><![CDATA[<p><a href="http://software.schmorp.de/pkg/libev.html">libev</a>是Marc Lehmann用C写的高性能事件循环库。通过libev，可以灵活地把各种事件组织管理起来，如：时钟、io、信号等。libev在业界内也是广受好评，不少项目都采用它来做底层的事件循环。node.js也是其中之一。 学习和分析libev库，有助于理解node.js底层的工作原理，同时也可以学习和借鉴libev的设计思想。本文是最近在学习libev源码的一些心得总结吧。</p>
+
+<!-- more -->
+
+
+<h1>libev示例</h1>
+
+<p>先上一个例子，看看libev是怎么使用的吧。</p>
+
+<p>```c</p>
+
+<pre><code>// a single header file is required
+#include &lt;ev.h&gt;
+
+#include &lt;stdio.h&gt; // for puts
+
+// every watcher type has its own typedef'd struct
+// with the name ev_TYPE
+ev_io stdin_watcher;
+ev_timer timeout_watcher;
+
+// all watcher callbacks have a similar signature
+// this callback is called when data is readable on stdin
+static void
+stdin_cb (EV_P_ ev_io *w, int revents)
+{
+    puts ("stdin ready");
+    // for one-shot events, one must manually stop the watcher
+    // with its corresponding stop function.
+    ev_io_stop (EV_A_ w);
+
+    // this causes all nested ev_run's to stop iterating
+    ev_break (EV_A_ EVBREAK_ALL);
+}
+
+// another callback, this time for a time-out
+static void
+timeout_cb (EV_P_ ev_timer *w, int revents)
+{
+    puts ("timeout");
+    // this causes the innermost ev_run to stop iterating
+    ev_break (EV_A_ EVBREAK_ONE);
+}
+
+int
+main (void)
+{
+    // use the default event loop unless you have special needs
+    struct ev_loop *loop = EV_DEFAULT;
+
+    // initialise an io watcher, then start it
+    // this one will watch for stdin to become readable
+    ev_io_init (&amp;stdin_watcher, stdin_cb, /*STDIN_FILENO*/ 0, EV_READ);
+    ev_io_start (loop, &amp;stdin_watcher);
+
+    // initialise a timer watcher, then start it
+    // simple non-repeating 5.5 second timeout
+    ev_timer_init (&amp;timeout_watcher, timeout_cb, 5.5, 0.);
+    ev_timer_start (loop, &amp;timeout_watcher);
+
+    // now wait for events to arrive
+    ev_run (loop, 0);
+
+    // break was called, so exit
+    return 0;
+}
+</code></pre>
+
+<p>```</p>
+
+<p>这是libev官网文档的例子，其中libev的使用步骤还是比较清晰的。从main开始入手，可以发现代码中主要做了这么几件事情：</p>
+
+<ul>
+<li><p>获取ev_loop实例。ev_loop，从名字上可以看出，它代表了一个事件循环，也是我们后面代码的主要组织者。</p></li>
+<li><p>创建和初始化watcher。libev中定义了一系列的watcher，每类watcher负责一类特定的事件。一般可以通过ev_TYPE_init函数来创建一个watcher实例（TYPE是某一种watcher类型，如：io, timer等）。例子中分别创建了io和timer两个watcher，并绑定了相应的回调函数。当感兴趣的事件发生后，对应的回调函数将会被调用。</p></li>
+<li><p>将watcher注册到ev_loop中。一般可以通过ev_TYPE_start函数来完成。注册成功后，watcher便和loop关联起来了，当loop中检测到感兴趣的事件发生，便会通知相关的watcher。</p></li>
+<li><p>启动事件循环。 即后面的ev_run函数。事件循环启动后，当前线程/进程将会被阻塞，直到循环被终止。</p></li>
+</ul>
+
+
+<p>在上面的例子中，在两个回调函数中的ev_break函数就是终止循环的地方。当5.5秒超时或是标准输入有输入事件，则会进入到相应的回调函数，然后会终止事件循环，退出程序。</p>
+
+<h1>libev工作原理</h1>
+
+<p>总的来看，libev其实是实现了<a href="http://delivery.acm.org/10.1145/230000/226255/p65-schmidt.pdf?ip=112.10.101.170&amp;acc=ACTIVE%20SERVICE&amp;CFID=175798313&amp;CFTOKEN=73864269&amp;__acm__=1350399757_644772085f9a19ff9d2fdb35159272bf">Reactor模式</a>。当中主要包含了这么几个角色：watcher， ev_loop和ev_run。</p>
+
+<h2>watcher</h2>
+
+<p>watcher是Reactor中的Event Handler。一方面，它向事件循环提供了统一的调用接口（按类型区分）;另一方面，它是外部代码的注入口，维护着具体的watcher信息，如：绑定的回调函数，watcher的优先级，是否激活等。</p>
+
+<p>在ev.h中我们可以看到各种watcher的定义，如：ev_io, ev_timer等。其中，watcher的公共属性定义如下：</p>
+
+<p>```c</p>
+
+<pre><code>/* shared by all watchers */
+#define EV_WATCHER(type)            \
+    int active; /* private */           \
+    int pending; /* private */          \
+    EV_DECL_PRIORITY /* private  int priority; */       \
+    EV_COMMON /* rw  void *data; */             \
+    EV_CB_DECLARE (type) /* private */
+</code></pre>
+
+<p>```
+其中的宏定义如下：</p>
+
+<p>```c</p>
+
+<pre><code># define EV_DECL_PRIORITY int priority;
+# define EV_COMMON void *data;
+# define EV_CB_DECLARE(type) void (*cb)(EV_P_ struct type *w, int revents);
+</code></pre>
+
+<p>```
+* active: 表示当前watcher是否被激活。ev_TYPE_start调用后置位，ev_TYPE_stop调用后复位；</p>
+
+<ul>
+<li><p>pending: 表示当前watcher有事件就绪，等待处理。pending的值其实就是当前watcher在pendings队列中的下标；</p></li>
+<li><p>priority: 是当前watcher的优先级；</p></li>
+<li><p>data: 附加数据指针，用来在watcher中携带额外所需的数据；</p></li>
+<li><p>cb：是事件触发后的回调函数定义。</p></li>
+</ul>
+
+
+<p>具体的watcher再在此基础上添加额外的属性。
+开发者可以根据需要，选择特定类型的watcher，创建实例并进行初始化，然后将实例注册到loop中即可。libev中定义了<a href="http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod#WATCHER_TYPES">若干种类型的watcher</a>，每类watcher负责解决某一特定领域的问题（如：io, timer, signal等），可以在ev.h中看到这些watcher的定义。</p>
+
+<h2>ev_loop</h2>
+
+<p>ev_loop则是一个Reactor的角色，是事件循环的上下文环境，就像一根竹签，把前面的watcher实例像糖葫芦一样串起来。</p>
+
+<h3>ev_loop的定义</h3>
+
+<p>ev_loop的定义在ev.c中，具体如下：</p>
+
+<p>```c</p>
+
+<pre><code>struct ev_loop
+{
+    ev_tstamp ev_rt_now;
+    #define ev_rt_now ((loop)-&gt;ev_rt_now)
+    #define VAR(name,decl) decl;
+        #include "ev_vars.h"
+    #undef VAR
+};
+</code></pre>
+
+<p>```</p>
+
+<p>ev_vars.h中定义了ev_loop的各种属性。在ev_wrap.h中则定义了与loop相关的各种宏，代码中大多都是以宏的形式进行操作。</p>
+
+<h3>watcher的管理</h3>
+
+<p>在ev_loop中，watcher按各自的类型进行分类存储。如：io的loop->anfds，timer的loop->timers。ev_TYPE_start在激活watcher后，便将它加入到相应的存储结构中（具体的实现在后面介绍watcher的文章再分析）。</p>
+
+<p>在事件循环中，有事件就绪的watcher会被挑拣出来，保存到ev_loop中。这些就绪的watcher主要由loop->pendings和loop->pendingcnt来维护（如下图所示）。这两个东西都是二维数组，第一维都是优先级。pendings中存的是ANPENDING实例，后者的做要作用就是维护就绪的watcher指针; 而pendingcnt中存的则是对应优先级上的pendings元素的数量。在每个就绪的watcher上也会有一个pending字段记录它在pendings列表中的下标，这样就可以通过watcher很方便的找到它在pendings列表中的位置了，这对删除操作很有帮助。</p>
+
+<p>在一轮事件循环结束后，则会根据优先级，依次触发就绪的watcher。</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/f9/d3/73/334a86e7c2d386ed8c3e3174f3a543a3.png" alt="pendings结构图"/>
+</center>
+
+
+<h2>bool ev_run(loop, flag)</h2>
+
+<p>ev_run函数是执行事件循环的引擎，即Reactor模式中的select方法。通过向ev_run函数传递一个ev_loop实例，便可以开启一个事件循环。ev_run实际上是一个巨大的do-while循环，期间会检查loop中注册的各种watcher的事件。如果有事件就绪，则触发相应的watcher。这个循环会一直持续到ev_break被调用或者无active的watcher为止。当然，也可以通过传递EVRUN_NOWAIT或EVRUN_ONCE等flag来控制循环的阻塞行为。</p>
+
+<p>ev_run的工作内容，在<a href="http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod#FUNCTIONS_CONTROLLING_EVENT_LOOPS">官方文档的API</a>中有详细说明，通过文档有助于对ev_run的理解。具体的代码有点长，在这里就不贴了，感兴趣的同学可以在ev.c中查看ev_run的实现代码。剔除掉条件检查和一些无关紧要的代码，主要的流程如下图所示。</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/4f/7f/ea/36f77813a07b89788a1ede622c3d34f9.png" alt="ev_run流程图"/>
+</center>
+
+
+<p>可以看到，ev_run的主要工作就是按watcher的分类，先后检查各种类型的watcher上的事件，通过ev_feed_event函数将就绪的watcher加入到pending的数据结构中。最后调用ev_invoke_pending，触发pending中的watcher。完了以后会检查，是否还有active的watcher以及是否有ev_break调用过，然后决定是否要继续下一轮循环。</p>
+
+<h1>总结</h1>
+
+<p>总的来看，libev的结构设计还是非常清晰。如果说，主循环ev_run是libev这棵大树的主干，那么功能强大，数量繁多的watcher就是这棵大树的树叶，而循环上下文ev_loop则是连接主干和树叶的树枝，它们的分工与职责是相当明确的。作为大树的主干，ev_run的代码是非常稳定和干净的，基本上不会掺杂外部开发者的逻辑代码进来。作为叶子的watcher，它的定位也非常明确：专注于自己的领域，只解决某一个类型的问题。不同的watcher以及watcher和主循环之间并没有太多的干扰和耦合，这也是libev能如此灵活扩展的原因。而中间的树枝ev_loop的作用也是不言而喻的，正是因为它在中间的调和，前面两位哥们才能活得这么有个性。</p>
+
+<p>看到这里，libev的主体架构已经比较清楚了，但是似乎还没看到与性能相关的关键代码。与主干代码不一样，这些代码更多的是隐藏在实现具体逻辑的地方，也就是watcher之中的。虽然watcher的使用接口都比较相似，但是不同的watcher，底层的数据结构和处理策略还是不一样的。下面一篇文章我们就来探索一下libev中比较常用的几种watcher的设计与实现。</p>
+]]></content>
+  </entry>
+  
+</feed>

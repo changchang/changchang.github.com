@@ -1,0 +1,489 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>libev源码分析 -- 整体设计 - Little Cat in Big World</title>
+  <meta name="author" content="changchang">
+
+  
+  <meta name="description" content="libev源代码分析，分析libev整体框架的设计思想">
+  <meta name="keywords" content="libev, 源代码分析, 设计思想">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://codingcat.net/blog/2012/10/09/libev-framework/">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href='http://fonts.googleapis.com/css?family=Lato:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="/javascripts/ender.js"></script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <link href="/atom.xml" rel="alternate" title="Little Cat in Big World" type="application/atom+xml">
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">Little Cat in Big World</a></h1>
+  
+    <h2>Wandering, Coding and Recording My Life.</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:codingcat.net" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">Libev源码分析 -- 整体设计</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2012-10-09T00:00:00+08:00" pubdate data-updated="true">Oct 9<span>th</span>, 2012</time>
+        
+         | <a href="#disqus_thread">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><p><a href="http://software.schmorp.de/pkg/libev.html">libev</a>是Marc Lehmann用C写的高性能事件循环库。通过libev，可以灵活地把各种事件组织管理起来，如：时钟、io、信号等。libev在业界内也是广受好评，不少项目都采用它来做底层的事件循环。node.js也是其中之一。 学习和分析libev库，有助于理解node.js底层的工作原理，同时也可以学习和借鉴libev的设计思想。本文是最近在学习libev源码的一些心得总结吧。</p>
+
+<!-- more -->
+
+
+<h1>libev示例</h1>
+
+<p>先上一个例子，看看libev是怎么使用的吧。</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="c1">// a single header file is required</span>
+</span><span class='line'><span class="cp">#include &lt;ev.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="cp">#include &lt;stdio.h&gt; </span><span class="c1">// for puts</span>
+</span><span class='line'>
+</span><span class='line'><span class="c1">// every watcher type has its own typedef&#39;d struct</span>
+</span><span class='line'><span class="c1">// with the name ev_TYPE</span>
+</span><span class='line'><span class="n">ev_io</span> <span class="n">stdin_watcher</span><span class="p">;</span>
+</span><span class='line'><span class="n">ev_timer</span> <span class="n">timeout_watcher</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="c1">// all watcher callbacks have a similar signature</span>
+</span><span class='line'><span class="c1">// this callback is called when data is readable on stdin</span>
+</span><span class='line'><span class="k">static</span> <span class="kt">void</span>
+</span><span class='line'><span class="nf">stdin_cb</span> <span class="p">(</span><span class="n">EV_P_</span> <span class="n">ev_io</span> <span class="o">*</span><span class="n">w</span><span class="p">,</span> <span class="kt">int</span> <span class="n">revents</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="n">puts</span> <span class="p">(</span><span class="s">&quot;stdin ready&quot;</span><span class="p">);</span>
+</span><span class='line'>  <span class="c1">// for one-shot events, one must manually stop the watcher</span>
+</span><span class='line'>  <span class="c1">// with its corresponding stop function.</span>
+</span><span class='line'>  <span class="n">ev_io_stop</span> <span class="p">(</span><span class="n">EV_A_</span> <span class="n">w</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// this causes all nested ev_run&#39;s to stop iterating</span>
+</span><span class='line'>  <span class="n">ev_break</span> <span class="p">(</span><span class="n">EV_A_</span> <span class="n">EVBREAK_ALL</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="c1">// another callback, this time for a time-out</span>
+</span><span class='line'><span class="k">static</span> <span class="kt">void</span>
+</span><span class='line'><span class="nf">timeout_cb</span> <span class="p">(</span><span class="n">EV_P_</span> <span class="n">ev_timer</span> <span class="o">*</span><span class="n">w</span><span class="p">,</span> <span class="kt">int</span> <span class="n">revents</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="n">puts</span> <span class="p">(</span><span class="s">&quot;timeout&quot;</span><span class="p">);</span>
+</span><span class='line'>  <span class="c1">// this causes the innermost ev_run to stop iterating</span>
+</span><span class='line'>  <span class="n">ev_break</span> <span class="p">(</span><span class="n">EV_A_</span> <span class="n">EVBREAK_ONE</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span>
+</span><span class='line'><span class="nf">main</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="c1">// use the default event loop unless you have special needs</span>
+</span><span class='line'>  <span class="k">struct</span> <span class="n">ev_loop</span> <span class="o">*</span><span class="n">loop</span> <span class="o">=</span> <span class="n">EV_DEFAULT</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// initialise an io watcher, then start it</span>
+</span><span class='line'>  <span class="c1">// this one will watch for stdin to become readable</span>
+</span><span class='line'>  <span class="n">ev_io_init</span> <span class="p">(</span><span class="o">&amp;</span><span class="n">stdin_watcher</span><span class="p">,</span> <span class="n">stdin_cb</span><span class="p">,</span> <span class="cm">/*STDIN_FILENO*/</span> <span class="mi">0</span><span class="p">,</span> <span class="n">EV_READ</span><span class="p">);</span>
+</span><span class='line'>  <span class="n">ev_io_start</span> <span class="p">(</span><span class="n">loop</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">stdin_watcher</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// initialise a timer watcher, then start it</span>
+</span><span class='line'>  <span class="c1">// simple non-repeating 5.5 second timeout</span>
+</span><span class='line'>  <span class="n">ev_timer_init</span> <span class="p">(</span><span class="o">&amp;</span><span class="n">timeout_watcher</span><span class="p">,</span> <span class="n">timeout_cb</span><span class="p">,</span> <span class="mf">5.5</span><span class="p">,</span> <span class="mf">0.</span><span class="p">);</span>
+</span><span class='line'>  <span class="n">ev_timer_start</span> <span class="p">(</span><span class="n">loop</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">timeout_watcher</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// now wait for events to arrive</span>
+</span><span class='line'>  <span class="n">ev_run</span> <span class="p">(</span><span class="n">loop</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// break was called, so exit</span>
+</span><span class='line'>  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>这是libev官网文档的例子，其中libev的使用步骤还是比较清晰的。从main开始入手，可以发现代码中主要做了这么几件事情：</p>
+
+<ul>
+<li><p>获取ev_loop实例。ev_loop，从名字上可以看出，它代表了一个事件循环，也是我们后面代码的主要组织者。</p></li>
+<li><p>创建和初始化watcher。libev中定义了一系列的watcher，每类watcher负责一类特定的事件。一般可以通过ev_TYPE_init函数来创建一个watcher实例（TYPE是某一种watcher类型，如：io, timer等）。例子中分别创建了io和timer两个watcher，并绑定了相应的回调函数。当感兴趣的事件发生后，对应的回调函数将会被调用。</p></li>
+<li><p>将watcher注册到ev_loop中。一般可以通过ev_TYPE_start函数来完成。注册成功后，watcher便和loop关联起来了，当loop中检测到感兴趣的事件发生，便会通知相关的watcher。</p></li>
+<li><p>启动事件循环。 即后面的ev_run函数。事件循环启动后，当前线程/进程将会被阻塞，直到循环被终止。</p></li>
+</ul>
+
+
+<p>在上面的例子中，在两个回调函数中的ev_break函数就是终止循环的地方。当5.5秒超时或是标准输入有输入事件，则会进入到相应的回调函数，然后会终止事件循环，退出程序。</p>
+
+<h1>libev工作原理</h1>
+
+<p>总的来看，libev其实是实现了<a href="http://delivery.acm.org/10.1145/230000/226255/p65-schmidt.pdf?ip=112.10.101.170&amp;acc=ACTIVE%20SERVICE&amp;CFID=175798313&amp;CFTOKEN=73864269&amp;__acm__=1350399757_644772085f9a19ff9d2fdb35159272bf">Reactor模式</a>。当中主要包含了这么几个角色：watcher， ev_loop和ev_run。</p>
+
+<h2>watcher</h2>
+
+<p>watcher是Reactor中的Event Handler。一方面，它向事件循环提供了统一的调用接口（按类型区分）;另一方面，它是外部代码的注入口，维护着具体的watcher信息，如：绑定的回调函数，watcher的优先级，是否激活等。</p>
+
+<p>在ev.h中我们可以看到各种watcher的定义，如：ev_io, ev_timer等。其中，watcher的公共属性定义如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cm">/* shared by all watchers */</span>
+</span><span class='line'><span class="cp">#define EV_WATCHER(type)         \</span>
+</span><span class='line'><span class="cp"> int active; </span><span class="cm">/* private */</span><span class="cp">           \</span>
+</span><span class='line'><span class="cp"> int pending; </span><span class="cm">/* private */</span><span class="cp">          \</span>
+</span><span class='line'><span class="cp"> EV_DECL_PRIORITY </span><span class="cm">/* private  int priority; */</span><span class="cp">       \</span>
+</span><span class='line'><span class="cp"> EV_COMMON </span><span class="cm">/* rw  void *data; */</span><span class="cp">             \</span>
+</span><span class='line'><span class="cp"> EV_CB_DECLARE (type) </span><span class="cm">/* private */</span><span class="cp"></span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>其中的宏定义如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp"># define EV_DECL_PRIORITY int priority;</span>
+</span><span class='line'><span class="cp"># define EV_COMMON void *data;</span>
+</span><span class='line'><span class="cp"># define EV_CB_DECLARE(type) void (*cb)(EV_P_ struct type *w, int revents);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<ul>
+<li><p>active: 表示当前watcher是否被激活。ev_TYPE_start调用后置位，ev_TYPE_stop调用后复位；</p></li>
+<li><p>pending: 表示当前watcher有事件就绪，等待处理。pending的值其实就是当前watcher在pendings队列中的下标；</p></li>
+<li><p>priority: 是当前watcher的优先级；</p></li>
+<li><p>data: 附加数据指针，用来在watcher中携带额外所需的数据；</p></li>
+<li><p>cb：是事件触发后的回调函数定义。</p></li>
+</ul>
+
+
+<p>具体的watcher再在此基础上添加额外的属性。
+开发者可以根据需要，选择特定类型的watcher，创建实例并进行初始化，然后将实例注册到loop中即可。libev中定义了<a href="http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod#WATCHER_TYPES">若干种类型的watcher</a>，每类watcher负责解决某一特定领域的问题（如：io, timer, signal等），可以在ev.h中看到这些watcher的定义。</p>
+
+<h2>ev_loop</h2>
+
+<p>ev_loop则是一个Reactor的角色，是事件循环的上下文环境，就像一根竹签，把前面的watcher实例像糖葫芦一样串起来。</p>
+
+<h3>ev_loop的定义</h3>
+
+<p>ev_loop的定义在ev.c中，具体如下：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="k">struct</span> <span class="n">ev_loop</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="n">ev_tstamp</span> <span class="n">ev_rt_now</span><span class="p">;</span>
+</span><span class='line'>  <span class="cp">#define ev_rt_now ((loop)-&gt;ev_rt_now)</span>
+</span><span class='line'>  <span class="cp">#define VAR(name,decl) decl;</span>
+</span><span class='line'>      <span class="cp">#include &quot;ev_vars.h&quot;</span>
+</span><span class='line'>  <span class="cp">#undef VAR</span>
+</span><span class='line'><span class="p">};</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>ev_vars.h中定义了ev_loop的各种属性。在ev_wrap.h中则定义了与loop相关的各种宏，代码中大多都是以宏的形式进行操作。</p>
+
+<h3>watcher的管理</h3>
+
+<p>在ev_loop中，watcher按各自的类型进行分类存储。如：io的loop->anfds，timer的loop->timers。ev_TYPE_start在激活watcher后，便将它加入到相应的存储结构中（具体的实现在后面介绍watcher的文章再分析）。</p>
+
+<p>在事件循环中，有事件就绪的watcher会被挑拣出来，保存到ev_loop中。这些就绪的watcher主要由loop->pendings和loop->pendingcnt来维护（如下图所示）。这两个东西都是二维数组，第一维都是优先级。pendings中存的是ANPENDING实例，后者的做要作用就是维护就绪的watcher指针; 而pendingcnt中存的则是对应优先级上的pendings元素的数量。在每个就绪的watcher上也会有一个pending字段记录它在pendings列表中的下标，这样就可以通过watcher很方便的找到它在pendings列表中的位置了，这对删除操作很有帮助。</p>
+
+<p>在一轮事件循环结束后，则会根据优先级，依次触发就绪的watcher。</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/f9/d3/73/334a86e7c2d386ed8c3e3174f3a543a3.png" alt="pendings结构图"/>
+</center>
+
+
+<h2>bool ev_run(loop, flag)</h2>
+
+<p>ev_run函数是执行事件循环的引擎，即Reactor模式中的select方法。通过向ev_run函数传递一个ev_loop实例，便可以开启一个事件循环。ev_run实际上是一个巨大的do-while循环，期间会检查loop中注册的各种watcher的事件。如果有事件就绪，则触发相应的watcher。这个循环会一直持续到ev_break被调用或者无active的watcher为止。当然，也可以通过传递EVRUN_NOWAIT或EVRUN_ONCE等flag来控制循环的阻塞行为。</p>
+
+<p>ev_run的工作内容，在<a href="http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod#FUNCTIONS_CONTROLLING_EVENT_LOOPS">官方文档的API</a>中有详细说明，通过文档有助于对ev_run的理解。具体的代码有点长，在这里就不贴了，感兴趣的同学可以在ev.c中查看ev_run的实现代码。剔除掉条件检查和一些无关紧要的代码，主要的流程如下图所示。</p>
+
+<center>
+    <img src="http://i.6.cn/cvbnm/4f/7f/ea/36f77813a07b89788a1ede622c3d34f9.png" alt="ev_run流程图"/>
+</center>
+
+
+<p>可以看到，ev_run的主要工作就是按watcher的分类，先后检查各种类型的watcher上的事件，通过ev_feed_event函数将就绪的watcher加入到pending的数据结构中。最后调用ev_invoke_pending，触发pending中的watcher。完了以后会检查，是否还有active的watcher以及是否有ev_break调用过，然后决定是否要继续下一轮循环。</p>
+
+<h1>总结</h1>
+
+<p>总的来看，libev的结构设计还是非常清晰。如果说，主循环ev_run是libev这棵大树的主干，那么功能强大，数量繁多的watcher就是这棵大树的树叶，而循环上下文ev_loop则是连接主干和树叶的树枝，它们的分工与职责是相当明确的。作为大树的主干，ev_run的代码是非常稳定和干净的，基本上不会掺杂外部开发者的逻辑代码进来。作为叶子的watcher，它的定位也非常明确：专注于自己的领域，只解决某一个类型的问题。不同的watcher以及watcher和主循环之间并没有太多的干扰和耦合，这也是libev能如此灵活扩展的原因。而中间的树枝ev_loop的作用也是不言而喻的，正是因为它在中间的调和，前面两位哥们才能活得这么有个性。</p>
+
+<p>看到这里，libev的主体架构已经比较清楚了，但是似乎还没看到与性能相关的关键代码。与主干代码不一样，这些代码更多的是隐藏在实现具体逻辑的地方，也就是watcher之中的。虽然watcher的使用接口都比较相似，但是不同的watcher，底层的数据结构和处理策略还是不一样的。下面一篇文章我们就来探索一下libev中比较常用的几种watcher的设计与实现。</p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">changchang</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2012-10-09T00:00:00+08:00" pubdate data-updated="true">Oct 9<span>th</span>, 2012</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/c-c-/'>C/C++</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2012/10/08/from-wordpress-to-octopress/" title="Previous Post: 从wordpress到octopress">&laquo; 从wordpress到octopress</a>
+      
+      
+        <a class="basic-alignment right" href="/blog/2012/10/20/libev-watchers/" title="Next Post: libev源码分析 -- 常用watcher">libev源码分析 -- 常用watcher &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+  <section>
+    <h1>Comments</h1>
+    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+  </section>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2012/11/01/libeio-source-analytics/">libeio源码浅析</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/20/libev-watchers/">libev源码分析 -- 常用watcher</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/09/libev-framework/">libev源码分析 -- 整体设计</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/10/08/from-wordpress-to-octopress/">从wordpress到octopress</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2012/05/18/connect-framework/">connect源码分析--基础架构</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+<section>
+  <h1>Categories</h1>
+    <ul id="category-list"><li><a href='/blog/categories/basic'>Basic (1)</a></li><li><a href='/blog/categories/c-c-'>C/C++ (3)</a></li><li><a href='/blog/categories/game'>Game (2)</a></li><li><a href='/blog/categories/java'>Java (4)</a></li><li><a href='/blog/categories/javascript'>Javascript (1)</a></li><li><a href='/blog/categories/nodejs'>nodejs (5)</a></li><li><a href='/blog/categories/svn-git'>svn/git (1)</a></li><li><a href='/blog/categories/心情'>心情 (1)</a></li></ul>
+</section>
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2012 - changchang -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+<script type="text/javascript">
+      var disqus_shortname = 'codingcat';
+      
+        
+        // var disqus_developer = 1;
+        var disqus_identifier = 'http://codingcat.net/blog/2012/10/09/libev-framework/';
+        var disqus_url = 'http://codingcat.net/blog/2012/10/09/libev-framework/';
+        var disqus_script = 'embed.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+
+
+
+
+
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-35967317-1']);
+  _gaq.push(['_trackPageview']);
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,494 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: nodejs | Little Cat in Big World]]></title>
+  <link href="http://codingcat.net/blog/categories/nodejs/atom.xml" rel="self"/>
+  <link href="http://codingcat.net/"/>
+  <updated>2012-11-16T09:56:32+08:00</updated>
+  <id>http://codingcat.net/</id>
+  <author>
+    <name><![CDATA[changchang]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[connect源码分析--基础架构]]></title>
+    <link href="http://codingcat.net/blog/2012/05/18/connect-framework/"/>
+    <updated>2012-05-18T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2012/05/18/connect-framework</id>
+    <content type="html"><![CDATA[<p>connect是TJ tx给node.js社区贡献的一个热门的web基础框架。TJ的另一力作express框架便是在它基础之上构建的。与express不同，connect更加短小精悍，是一个偏向基础设施的框架。</p>
+
+<p>正如名字所表达的一样，connect框架做的事情很简单，就是把一系列的组件连接到一起，然后让http的请求依次流过这些组件。这些被connect串联起来的组件被称为中间件（middlewire）。在connect中，http请求的处理流程被划分成一个个小片段，每一个小片段代表一项处理任务（如：请求body的解析，session的维护等），由一个中间件负责，前后片段之间靠request，response等对象传递中间数据。connect框架对这些处理细节并不关心，只知道将请求从一个中间件导向下一个中间件。connect的核心代码非常精简，加上注释，也就只有寥寥200来行代码。本文参考的connect版本为2.2.2（这个版本号好像有点特别-_-b）。</p>
+
+<!--more-->
+
+
+<p>先上个connect官网提供的一个Hello world例子吧：）</p>
+
+<p>```javascript
+  var connect = require('connect')
+  , http = require('http');
+  var app = connect()
+  .use(connect.favicon())
+  .use(connect.logger('dev'))
+  .use(connect.static('public'))
+  .use(connect.directory('public'))
+  .use(connect.cookieParser('my secret here'))
+  .use(connect.session())
+  .use(function(req, res){</p>
+
+<pre><code>res.end('Hello from Connect!\n');
+</code></pre>
+
+<p>  });
+  http.createServer(app).listen(3000);
+```</p>
+
+<p>很简单，很清晰的一个链式调用代码。风格与express的很像，不，应该是说express的风格跟它很像，总得有个先来后到，是吧。那么下面开始对connect的核心代码进行解析吧～</p>
+
+<h2>入口代码</h2>
+
+<p>connect的入口代码在lib/connect.js中，代码不多，主要定义了createServer函数。该函数最终被赋给module.exports，当成connect模块暴露出去，即对应于例子中的connect()函数。createServer的具体代码如下：</p>
+
+<p>```javascript
+  function createServer() {</p>
+
+<pre><code>function app(req, res){ app.handle(req, res); }
+utils.merge(app, proto);
+utils.merge(app, EventEmitter.prototype);
+app.route = '/';
+app.stack = [];
+for (var i = 0; i &amp;lt; arguments.length; ++i) {
+  app.use(arguments[i]);
+}
+return app;
+</code></pre>
+
+<p>  };
+```</p>
+
+<p>这个方法里主要定义了一个名字叫app的函数，然后通过utils.merge方法，把proto（由lib/proto.js定义，后面会介绍）和EventEmitter的方法merge到了app函数上。在js中，function也是对象，这就相当与给app对象添加了proto和EventEmitter的特性。这个方式，有点像松本tx提到的Ruby中的mixin，是实现多继承的一种途径。与mixin所不同的是，这里的merge会把后面merge进来的属性覆盖掉原来已有的同名属性。</p>
+
+<p>merge的结果，让我们拥有了一个继承了proto和EventEmitter的function对象，像app.handle, app.use等这些方法，其实都是从proto处继承而来的。这个function的函数体很简单，就是调用自己的handle方法来处理http请求。随后，这个function会被当作回调函数传递给node.js原生http模块的createServer方法，成为http请求处理的源头。</p>
+
+<p>这里有个地方需要注意的，createServer函数返回的是一个叫app的function，期间并没有用new关键字，所以它不是由app作为构造函数而构建出来的一个纯粹的js对象，它依然还是一个function，所以它可以作为回调函数传递给http.createServer方法。</p>
+
+<p>此外，createServer可以接受任意数量的中间件对象作为参数，在函数的最后会逐一加载这些传递进来的中间件。</p>
+
+<p>lib/connect.js文件的最后，会遍历lib/middleware目录下的connect自带的中间件模块，并将这些模块挂到app和app.middleware之下，于是就有了例子里的connect.favicon, connect.logger等。</p>
+
+<h2>中间件加载</h2>
+
+<p>connect的最大灵活性就在于它的中间件机制。connect的中间件加载代码定义在lib/proto.js中的app.use方法。use方法的定义如下：</p>
+
+<p><code>javascript
+  app.use(route, fn)
+</code></p>
+
+<p>route是中间件所使用的请求url的pattern，默认为'/'。connect会按照加载顺序，逐一执行pattern与请求url匹配的中间件处理函数。第二个参数fn即中间件处理函数，有两种定义形式。</p>
+
+<p>第一种形式为：</p>
+
+<p><code>javascript
+  function(req, resp, next)
+</code></p>
+
+<p>第二种形式为：</p>
+
+<p><code>javascript
+  function(err, req, resp, next)
+</code></p>
+
+<p>第一种是正常的处理函数，第二种是异常处理函数。</p>
+
+<p>req, resp为http模块的request和response对象。next是触发后续流程的回调函数，带一个err参数。通过传递给next传递一个err参数，告诉框架当前中间件处理出现异常。如果err为空，则会按顺序执行后面正常处理函数，忽略异常处理函数;相反，如果err非空，则会按顺序执行后续的异常处理函数，而忽略正常处理函数。</p>
+
+<p>在connect中，请求的处理流程是一个异步的过程，fn函数的返回并不代表处理流程的结束，所以在这里需要用next回调的形式通知框架执行后续的流程。但如果某一个中间件函数认为请求的流程到它那里已经处理完毕，无需再执行后面的流程，则可以直接返回，而不用再调用next回调函数了（包括正常和异常处理函数）。如果请求遍历完中间件列表后仍在调用next函数，connect则会认为这个请求没有中间件认领。这时，如果next的err参数非空，则会给页面返回500错误，表示server出现了内部错误;如果err为空，则返回404错误，即访问的资源不存在。</p>
+
+<p>依照中间件函数的定义，我们也可以编写自己的中间件函数，然后通过use方法加入到connect的处理流程中。</p>
+
+<p>在这里，我们也可以看出来，各个middleware之间其实并没有直接的依赖。request和response就成为它们在connect中传递信息的唯一桥梁。前面的中间件处理完毕后，把结果附到request或response之上，后面的中间件便可以从中获取到这些数据。所以，中间件的加载顺序在connect中就显得格外重要，必须将被依赖的中间件放在依赖它的模块之前。比如说，解析cookie的中间件应该放在处理session的中间件之前，因为一般session id是通过cookie来传递的。</p>
+
+<h2>处理流程</h2>
+
+<p>经过use之后，我们就拥有了一个中间件和pattern的列表，接下来就是怎么让http请求流经这个列表了。</p>
+
+<p>前面也提到过，http请求的处理源头就是app.handler方法。这个方法也比较简单，主要定义了一个next的函数，也就是上一节提到的next回调函数。next的调用其实是一个尾递归过程。每一次调用next，都会从列表中取出一个中间件，进行pattern匹配检查。这里的pattern匹配，其实是简单的startWith检查。也就是说，请求的url是以pattern开头，并且紧接着下一个字符是/或.的话，才认为是pattern匹配上了，然后才会将请求流入当前这个中间件的处理函数中。pattern匹配的代码如下：</p>
+
+<p><code>javascript
+  path = utils.parseUrl(req).pathname;
+  if (undefined == path) path = '/';
+  // skip this layer if the route doesn't match.
+  if (0 != path.indexOf(layer.route)) return next(err);
+  c = path[layer.route.length];
+  if (c &amp;&amp; '/' != c &amp;&amp; '.' != c) return next(err);
+</code></p>
+
+<p>其中，layter是保存中间件信息的数据结构，结构为：{route: route, handle: fn}。</p>
+
+<p>在handler方法中，我们也可以看到，上一节提到的两类中间件函数的处理判断，代码如下：</p>
+
+<p>```javascript
+  var arity = layer.handle.length;
+  if (err) {</p>
+
+<pre><code>if (arity === 4) {
+  layer.handle(err, req, res, next);
+} else {
+  next(err);
+}
+</code></pre>
+
+<p>  } else if (arity &lt; 4) {</p>
+
+<pre><code>layer.handle(req, res, next);
+</code></pre>
+
+<p>  } else {</p>
+
+<pre><code>next();
+</code></pre>
+
+<p>  }
+```</p>
+
+<p>可以看出来，connect是根据中间件处理函数的参数列表长度来区分中间件种类的。</p>
+
+<h2>总结</h2>
+
+<h3>设计模式</h3>
+
+<p>总的来看，connect其实是典型的chain of responsibility模式的实现。各个中间件就是责任链上的一个节点，route pattern就是决定中间件是否参与请求处理的判断条件。链只知道请求的传递，而中间件只知道自己的处理逻辑，这样对象之间的耦合是非常松散的，任务的指派过程也是相当灵活的。第三方按照中间件的接口约定即可开发自己的中间件并加入到connect中，同时还可以调整链的构建顺序来控制请求处理的流程。但由于http处理流程的一些特殊性，有的中间件之间也存在有一些隐含的依赖关系（如前面提到的cookie和session），所以connect对中间件的加载顺序也有着一定的要求。</p>
+
+<h3>filter</h3>
+
+<p>由于connect采用的是链式的结构，所以我们可以很方便地实现filter机制，将业务逻辑放在一个中间件中，而一些前期准备工作和后期的清理工作放到另外的中间件中，使得代码模块更加清晰，更容易复用。但正如前面所提到的，connect中，中间件之间是以异步的形式来进行衔接的，中间件函数的返回并不代表处理的结束，而需要通过next回调函数来执行后续流程。所以，connect中可以分别提供before和after的filter，但无法提供类似Java中的around风格的filter。这对于一些在after filter中需要访问before filter中上下文信息的情况来说并不是很方便。</p>
+
+<h3>八卦</h3>
+
+<p>按照TJ tx的最初构想，connect应该只是一个基本的工具框架，供其他上层的框架（如：express）所使用，而一般情况下不应该直接使用connect。但connect是如此的好用，以至于很多人直接就把connect用到自己的应用之中了，这也许并不是TJ的本意。从前面的分析里也可以看到，connect的url匹配规则其实是很简单的，而具体的url匹配，请求处理工作是由router中间件负责的。熟悉connect的tx应该也有这种感觉，router绝对是当中重量级的一个中间件。但从TJ对connect和express的布局上来看，这个中间件似乎应该更靠近express一些。所以，TJ tx最终做了一个艰难的决定，把router从connect迁移到了express里。具体的讨论可以到<a href="https://github.com/senchalabs/connect/issues/262">这里</a>围观。</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[seq-queue:在node.js中如何保持请求处理顺序的一些想法]]></title>
+    <link href="http://codingcat.net/blog/2012/03/31/seq-queue/"/>
+    <updated>2012-03-31T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2012/03/31/seq-queue</id>
+    <content type="html"><![CDATA[<p>前段时间项目需要，写了这个小模块<a href="https://github.com/changchang/seq-queue">https://github.com/changchang/seq-queue</a>，现在拿出来分享一下~</p>
+
+<p>seq-queue主要是满足一些对请求处理顺序有要求的场景。一般在http处理中，对用户连续的请求可以进行并行处理，无须关心请求的处理顺序。但在另外一些场景下则不然。比如：一个游戏服务器处理，对于玩家的一系列操作，如：combo连招，则希望有严格的执行顺序。又如，数据库服务器处理客户端的prepare，execute，close等这些请求，也需要保证请求的执行顺序。seq-queue则是结合了node.js异步回调的环境设计的一个保持请求顺序化处理的模块。</p>
+
+<!--more-->
+
+
+<h1>简单的例子</h1>
+
+<p>seq-queue的结构非常简单，可以看作是一个FIFO队列，里面的任务只有在它之前的所有任务都被执行完毕后才会被执行。使用也很简单，例子如下：</p>
+
+<p>```javascript</p>
+
+<pre><code>var SeqQueue = require('seq-queue');
+var queue = SeqQueue.createQueue(1000);
+queue.push(function(task) {
+  setTimeout(function() {
+    console.log('hello');
+    task.done();
+  }, 500);
+});
+
+queue.push(function(task) {
+  console.log('world');
+  task.done();
+});
+</code></pre>
+
+<p>```</p>
+
+<p>在服务端，只要为每个client session创建一个seq-queue实例，将需要顺序执行的请求放入其中即可。</p>
+
+<h1>seq-queue的状态机</h1>
+
+<p>seq-queue实例的状态机可以简单用下面的图来描述：</p>
+
+<center>
+    <img title="seq-queue-state" src="http://i.6.cn/cvbnm/e6/4c/43/a595faf0f221792d5afe4b16ef5d5877.jpg" alt="seq-queue-state" width="300" height="254" />
+</center>
+
+
+<p>queue实例创建后默认是idle状态。</p>
+
+<p>通过push方法往queue中添加任务后，变为busy状态。当前任务执行完后会调next方法执行下一个任务，如果无任务可执行则回到idle状态。</p>
+
+<p>可以通过close(false)方法优雅关闭，进入closed状态。closed状态下不会接收新的任务，但会持续执行完队列中剩余的任务。所有剩余任务完成后，进入drained状态，queue实例生命周期结束。</p>
+
+<p>也可以通过close(true)方法强制关闭，直接进入drained状态。</p>
+
+<h1>纠结点</h1>
+
+<p>seq-queue的设计中，主要有下面两个地方比较纠结的。</p>
+
+<p>第一点是，queue中的任务被封装成function的形式，带一个参数task。当任务结束的时候，需要显式地调一下task.done()来通知queue当前任务执行完毕。这个主要是由node.js异步回调的风格所决定的。在node.js中，一个任务的function返回了，并不代表一个任务处理的所有流程已结束，后面可能还有一大堆的回调在等着执行。seq-queue中则主要是借鉴了node-unit里的风格，传递一个task参数，提醒使用者记得执行完毕后调用一下task.done()来结束处理。</p>
+
+<p>第二点就是超时的机制。因为seq-queue是顺序处理的，如果用户忘了调task.done()或是在某个callback中抛了个uncaught exception无疾而终了，queue则会因此而被堵死。为了避免这种情况，queue中的每个任务都设置了一个超时时间，如果超时了会忽略掉当前任务而执行下一个任务。这是异步环境下，异常状态处理的一个权宜之计吧。queue默认的全局超时时间是3s，可以通过createQueue方法指定当前实例的全局超时时间，也可以在push方法中为每个任务设置任务相关的超时时间。超时的任务中再调task.done()不会影响queue的调度。</p>
+
+<h1>小结</h1>
+
+<p>seq-queue写的比较仓促，也没来得及做充分的调查看是否已经有提供类似功能的模块，功能方面也主要是往项目的需求上面靠。大家之前有什么类似的工具，或是有什么好想法，再或者是觉得有什么地方不爽的，都来吐槽一下吧~ :)</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[异步环境下的异常处理]]></title>
+    <link href="http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment/"/>
+    <updated>2012-01-19T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2012/01/19/exception-in-async-enviroment</id>
+    <content type="html"><![CDATA[<p>webgame容器的设计中遇到了一个问题，如何处理回调中未捕获的异常，维护系统状态的完整性。而这个问题的根源来自于node.js的异步回调模式。</p>
+
+<p>先回想一下，熟悉的tomcat容器中是如何处理未捕获的异常的。</p>
+
+<p>tomcat的模型比较简单，每个请求由一个单独的线程来处理，采用的是同步阻塞的模式。当一个请求到达后，请求会通过层层filter，最终到达servlet的service的方法。当请求从servlet的处理返回后，再按原路经过层层filter返回。整个处理的过程，都是在同一个线程，同一次函数调用周期中完成的。也就是说，完全可以在请求处理的入口处，用一个try...catch来捕获处理过程中抛出的所有的未捕获异常，并且在这个入口处，是可以获取到这个请求的上下文的，可以由此来给客户端返回错误的响应。</p>
+
+<p>而在node.js中，采用的是异步回调的模式，处理函数返回，并不代表处理流程完成，可能还有后续的处理逻辑在回调函数中等待触发。而回调函数的触发可能会是在另外一个函数调用周期中，所以在当次请求的入口处包裹try...catch并不总是能捕捉到回调函数中抛出来的异常。但从另一面来看，回调函数最终一定是由node.js中处理任务的主线程来触发的，所以node可以帮我们捕捉到这些异常，反馈到开发者手里也就是我们所熟悉的uncaughtException事件。但在这种情况下，回调函数的执行环境是node的主线程，所以已无法获取到对应的请求上下文，也就无法给客户端反馈出错的信息了。</p>
+
+<!--more-->
+
+
+<p>作为对比，我简单的考察了一下java中的几个web容器提供异步请求处理接口的例子。</p>
+
+<h1>tomcat comet</h1>
+
+<p>tomcat comet的处理手法比较简单粗暴，由容器管理线程的分配调度，只暴露给用户一个简单的event接口，让用户根据event的类型做处理。整个流程还是控制在容器的管理下的，即使event接口中，用户抛出了未捕获异常，容器还是可以捕捉到，并能知晓请求的上下文。代码框架如下：</p>
+
+<p>```java</p>
+
+<pre><code>/**
+ * Process the given Comet event.
+ *
+ * @param event The Comet event that will be processed
+ * @throws IOException
+ * @throws ServletException
+ */
+public void event(CometEvent event)
+    throws IOException, ServletException {
+    HttpServletRequest request = event.getHttpServletRequest();
+    HttpServletResponse response = event.getHttpServletResponse();
+    if (event.getEventType() == CometEvent.EventType.BEGIN) {
+    } else if (event.getEventType() == CometEvent.EventType.ERROR) {
+    } else if (event.getEventType() == CometEvent.EventType.END) {
+    } else if (event.getEventType() == CometEvent.EventType.READ) {
+    }
+}
+</code></pre>
+
+<p>```</p>
+
+<h1>jetty continuation</h1>
+
+<p>jetty continuation的处理手法更加粗暴，通过Continuation实例的suspend方法来让当前请求挂起，并将处理线程归还给容器，等待超时或resume方法被调用时再继续执行该请求。</p>
+
+<p>实现的手法是suspend方法内部会抛除一个RetryRequeset的RuntimeException，以此来终止当前请求的处理流程（具体参考SelectChannelConnector.RetryContinuation）。外层容器捕获该异常后，将请求加入超时队列，线程退还给容器。等到超时和resume方法被调用后，请求会从头再执行一次（包括前面的filter）。所以，continuation要求该类请求所经过的filter和servlet必须是幂等的（可以重复进入，不影响状态）。因为continuation其实是把request的流程再执行一遍，所以它实质上还是同步的模式，所以对未捕获的异常处理等同于tomcat的传统处理方式。</p>
+
+<p>continuation的示例如下：</p>
+
+<p>```java
+private void doPoll(HttpServletRequest request, AjaxResponse response)
+{</p>
+
+<pre><code>HttpSession session = request.getSession(true);
+
+synchronized (mutex)
+{
+    Member member = (Member)chatroom.get(session.getId());
+
+    // Is there any chat events ready to send?
+    if (!member.hasEvents())
+    {
+        // No - so prepare a continuation
+        Continuation continuation = ContinuationSupport.getContinuation(request, mutex);
+        member.setContinuation(continuation);
+
+        // wait for an event or timeout
+        continuation.suspend(timeoutMS);
+    }
+    member.setContinuation(null);
+
+    // send any events
+    member.sendEvents(response);
+}
+</code></pre>
+
+<p>}
+```</p>
+
+<h1>servlet 3.0</h1>
+
+<p>servlet 3.0中也加入了异步处理的支持，由ServletRequest对象通过startAsync方法获取一个AsyncContext，将请求处理变为异步化，当前的处理函数可以直接结束返回，开发者可以另外开一个线程，通过AsyncContext继续完成后续的响应。这个模型跟node.js是比较类似的。因为处理线程是用户派生的，如果有未捕获异常，容器是不知晓的。而因为异常，AsyncContext的complete或dispatch方法没有执行，将会导致请求无法返回，这点跟node也是类似的。</p>
+
+<p>最后回头看看，在node的异步处理的模式下，容器对回调的控制较弱。一般的形式通过传递回调函数，由开发者代码调用来告知容器处理流程的真正结束，connect，nodeunit等都是用类似的手法来处理。如果回调函数中因为未捕获异常而退出，则后续流程会因此而丢失。做为容器来说，也有可能因为用户的不良代码，忘了调用回调函数而丢掉后面的流程。</p>
+
+<p>暂时也没想到比较好的解决办法，目前的想法是设置回调超时。在每个需要用户代码调用回调的接口添加一个超时记录，用一个类似bitmap的东西来维护reqId和超时记录的映射关系。如果用户代码在指定时间内调用回调函数，则根据reqId清空超时记录;否则对该次请求做超时处理。</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[node.js的循环依赖]]></title>
+    <link href="http://codingcat.net/blog/2011/12/30/trap-for-circle-dependencies-of-node-js/"/>
+    <updated>2011-12-30T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2011/12/30/trap-for-circle-dependencies-of-node-js</id>
+    <content type="html"><![CDATA[<p>循环依赖，简单点来说就是a文件中require b文件，然后b文件中又反过来require a文件。这个问题我们平时可能并不大注意到，但如果处理不好可能会引起一些让人摸不清的问题。在node中，是如何处理循环依赖的问题的呢？</p>
+
+<!--more-->
+
+
+<p>写个简单的例子来试验一下看吧。
+定义两个文件：</p>
+
+<p>a.js</p>
+
+<p><code>javascript
+var b = require('./b');
+console.log('a.js get b:' + b.b);
+module.exports.a = 1;
+</code></p>
+
+<p>b.js</p>
+
+<p><code>javascript
+var a = require('./a');
+console.log('b.js get a:' + a.a);
+module.exports.b = 2;
+</code></p>
+
+<p>执行</p>
+
+<pre>
+node a.js
+</pre>
+
+
+<p>输出的结果是</p>
+
+<pre>
+b.js get a:undefined
+a.js get b:2
+</pre>
+
+
+<p>从打印的轨迹上来看，代码执行的流程大致如下：</p>
+
+<pre>
+a.js:                               b.js:
+var b = require('./b');
+                                    var a = require('./a'); // a = {}
+                                    console.log('b.js get a:' + a.a);
+                                    module.exports.b = 2;
+// b = {b: 2}
+console.log('a.js get b:' + b.b);
+module.exports.a = 1;
+</pre>
+
+
+<p>node的加载过程，可以在lib/module.js文件中找到。与这个过程相关的代码主要集中在Module._load方法里。可以看到，node会为每个新加载的文件创建一个Module对象（假设为a），这个就是我们在a.js代码中看到的module了。在创建a之后，node会先将a放到cache中，然后再对它进行加载操作。也就是说，如果在加载a的过程中，有其他的代码（假设为b）require a.js的话，那么b可以从cache中直接取到a的module，从而不会引起重复加载的死循环。但带来的代价就是在load过程中，b看到的是不完整的a，也就是为什么前面打印undefined的原因。</p>
+
+<p>Module的构造函数</p>
+
+<p>```javascript</p>
+
+<pre><code>function Module(id, parent) {
+    this.id = id;
+    this.exports = {};
+    this.parent = parent;
+
+    this.filename = null;
+    this.loaded = false;
+    this.exited = false;
+    this.children = [];
+}
+</code></pre>
+
+<p>```</p>
+
+<p>Module._load方法</p>
+
+<p>```javascript</p>
+
+<pre><code>Module._load = function(request, parent, isMain) {
+    //...
+
+    var module = new Module(id, parent);&lt;/p&gt;
+
+    //...
+
+    Module._cache[filename] = module;
+    try {
+        module.load(filename);
+    } catch (err) {
+    delete Module._cache[filename];
+        throw err;
+    }
+
+    return module.exports;
+};
+</code></pre>
+
+<p>```</p>
+
+<p>这个看似简单粗暴的处理手法，但实际上是node作者权衡各方面因素的结果。我们敬爱的npm作者issacs强调说了，这不是bug，而且近期内不会做什么改变。当然，issacs也给出了一些规避这个陷阱的建议（具体可以参考后面给的链接[1]）。我总结了一下，主要有两点：一个是在造成循环依赖的require之前把需要的东西exports出去;另一个是不要在load过程中操作未完成的模块。</p>
+
+<p>所以上面的例子的一种处理方法就是把各自的exports语句放到require语句前面，然后再运行，可以看到打印了正确的值。</p>
+
+<p>从前面的分析来看，循环依赖的陷阱出现的条件比较苛刻：一个是循环依赖，另一个是在load期间调用未加载完成的对象。所以大家平常不怎么会遇到。但我之前就曾华丽丽的邂逅了这个陷阱，在这里拿出来当一下反面教材。。。</p>
+
+<p>场景简化后大致如下：我有一堆service，每一个service负责消费某一类消息，并且可能会产生新的消息给其他service消费。从消息传递上来看，并没有产生循环依赖。但我为了解耦，定义了一个消息中心center的角色出来进行消息分发。center主要是维护一个type->service的map来路由消息，这样center就得把所有的service加载进来，于是产生了center->service的依赖。另一面，每个service又需要通过center来分发它们新产生的消息，于是又出现了service->center的依赖，循环依赖就这么出来了。刚好在service加载的过程中，又调用了center的一个方法，就发生了undefined的错误。</p>
+
+<p>这个问题查清楚原因以后，解决起来并不困难。</p>
+
+<p>一种方法就是按前面的方法，在代码层面上规避循环依赖的陷阱;</p>
+
+<p>另外也可以在设计的层面上彻底避免循环依赖的出现。我的场景之所以出现循环依赖，是因为center和service都需要知道对方的存在，即 center <--> service。如果采用依赖注入的方式，则可以切断这种直接依赖，类似于center <- container -> service。即加入一个container角色，把center和service都先加载进来，然后再用IOC的方法把依赖关系建立好。这样center和service都无须知道对方具体的文件所在了，也就不会循环的require对方了。</p>
+
+<p>总的来说，循环依赖的陷阱并不大容易出现，但一旦出现了，在实际的代码中也许还真不好定位。它的存在给我们提了个醒，注意你工程中的依赖关系。哪天node对你抱怨，一个你明明已经exports了的方法undefined，我们就该提醒一下自己：哦，也许是它来了：）</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[websocket的压缩]]></title>
+    <link href="http://codingcat.net/blog/2011/10/08/websocket-compress/"/>
+    <updated>2011-10-08T00:00:00+08:00</updated>
+    <id>http://codingcat.net/blog/2011/10/08/websocket-compress</id>
+    <content type="html"><![CDATA[<p>websocket目前的版本只支持文本格式进行传输，预留有标志位供以后的版本扩展。而传输常常考虑的一个问题就是传输的效率。那么websocket是否跟http协议一样，能对传输的内容进行压缩来降低通讯所占用的带宽呢？</p>
+
+<!--more-->
+
+
+<p>从协议上看，websocket是支持压缩的。websockete里的压缩是以扩展的形式加进来的，参考：
+<a href="http://tools.ietf.org/html/draft-tyoshino-hybi-websocket-perframe-deflate-00">这里</a></p>
+
+<p>目前扩展只支持DEFLATE压缩，客户端和服务器端协商的过程也很简单，双方在握手阶段互发一个扩展头（客户端先发起）即可，然后后续所发的包的全部数据，包括header和body内容全部用DEFLATE算法进行压缩。（applies DEFLATE to everything including header octets such as opcode and payload length.）
+Sec-WebSocket-Extensions: deflate-application-data</p>
+
+<p>正如前面提到的，因为这个扩展的压缩会连header一起压缩，会导致一些代理无法直接解析header的信息，而需要先将整个数据解压。另外，websocket里客户端向服务器发的数据，需要先经过mark即用header里的marking-key对payload的字节进行异或，使包里数据尽量均匀，而这也将对DEFLATE压缩算法的效率造成影响。目前这个扩展争议还是比较大的。
+<a href="http://www.lenholgate.com/blog/2011/07/websockets---the-deflate-stream-extension-is-broken-and-badly-designed.html">参考</a></p>
+
+<p>不过目前websocket api也没有提供设置该参数的接口，支持的浏览器和服务器估计也不多吧。先记录下来，留待以后观察。</p>
+
+<p>----------2011-10-09更新
+上面的草案老了，今天找了个新的。</p>
+
+<p>websocket协议支持对传输内容进行压缩。压缩设置以extension的形式提供，目前仅定义了deflate压缩，需要浏览器和服务器的支持。如果浏览器支持，在websocket握手的时候会进行extension协商，最简单的形式就是添加协议头
+Sec-WebSocket-Extensions: deflate-frame
+如果服务器也支持则在响应中添加同样的协议头即可。
+之后传递的数据包的payload部分都经过deflate压缩。具体的协议内容参看<a href="http://tools.ietf.org/html/draft-tyoshino-hybi-websocket-perframe-deflate-04">这里</a></p>
+
+<p>websocket协议也内置了一个压缩的扩展deflate-stream，具体可以参考<a href="http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-10#section-9.2.1">这里</a> 。但这个扩展存在不少争议，如：它会连同协议的头也一起压缩，导致中间的代理需要先解压然后才能解析websocket协议的头信息。参考WebSockets - <a href="http://www.lenholgate.com/blog/2011/07/websockets---the-deflate-stream-extension-is-broken-and-badly-designed.html">The deflate-stream extension is broken and badly designed</a></p>
+
+<p>目前貌似还没有浏览器支持deflate-frame。对于deflate-stream，主要观察了一下firefox和chrome。firefox6支持deflate-stream压缩扩展，可以在about:config里network.websocket.extensions.stream-deflate设置。截包来看，能看到相应的扩展头。chrome 14.0.835.186没找到配置的地方，截包看默认没加压缩扩展头。</p>
+
+<p>附:<a href="https://developer.mozilla.org/en/WebSockets">各个浏览器对websocket版本的支持情况</a></p>
+]]></content>
+  </entry>
+  
+</feed>
