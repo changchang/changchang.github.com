@@ -1,9 +1,7 @@
 ---
 layout: post
 title: RedDwarf服务器数据模块分析
-categories:
-- Game
-- Java
+categories: [Game, Java]
 tags: [Game, Java, sgs]
 published: true
 comments: true
