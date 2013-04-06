@@ -4,7 +4,7 @@
   <title><![CDATA[Little Cat in Big World]]></title>
   <link href="http://codingcat.net/atom.xml" rel="self"/>
   <link href="http://codingcat.net/"/>
-  <updated>2012-11-16T09:56:32+08:00</updated>
+  <updated>2013-04-06T10:52:48+08:00</updated>
   <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
@@ -109,7 +109,7 @@
 <p>libeio主要是通过线程池来模拟异步操作，大致流程如下图所示：</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/dc/4b/1b/51f2c6bc78aaff156a5f09ee5c7dac65.png" title="libeio-arch" />
+    <img src="http://pic.yupoo.com/changchang005/CLxkiamL/medish.jpg" title="libeio-arch" />
 </center>
 
 
@@ -323,7 +323,7 @@
 <p>ev_io的主要使命就是监听并响应指定文件描述fd上的读写事件。对fd的监听工作，主要委托给底层的io库来完成。libev对目前比较流行的io库都提供了支持，如：select, epoll以及windows的iocp等。在这里libev使用了Adaptor模式，通过统一的适配层隐藏了底层io库的细节。在loop初始化的时候（loop_init），会根据配置将函数指针绑定到底层的io库函数对应的适配代码上。所以，开发者可以很方便的把代码切换到不同的底层实现上。相关的函数有：backend_modify，向底层库注册fd事件，如：epoll的epoll_ctl；backend_poll，向底层库轮询fd上是否有感兴趣的事件发生，如：epoll的epoll_wait。适配器实现的代码可以在ev_LIB.c中看到，LIB是io库的名字，如：ev_epoll.c，ev_win32.c等。</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/c6/ef/2a/ac177b3435994c7088ef9eb3d32394f2.png" alt="ev_io层次结构图" />
+    <img src="http://pic.yupoo.com/changchang005/CLxkoazt/medish.jpg" alt="ev_io层次结构图" />
 </center>
 
 
@@ -350,7 +350,7 @@
 ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了。ev_io的实例被存储在loop->anfds的结构中。anfds的结构如下图所示：</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/9c/37/cc/91f3e08d93a0d2f41b936c6f2f4895f5.png" alt="anfds结构图"/>
+    <img src="http://pic.yupoo.com/changchang005/CLxk38Cx/medish.jpg" alt="anfds结构图"/>
 </center>
 
 
@@ -657,7 +657,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 <p>在一轮事件循环结束后，则会根据优先级，依次触发就绪的watcher。</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/f9/d3/73/334a86e7c2d386ed8c3e3174f3a543a3.png" alt="pendings结构图"/>
+    <img src="http://pic.yupoo.com/changchang005/CLxk3UG7/medish.jpg" alt="pendings结构图"/>
 </center>
 
 
@@ -668,7 +668,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 <p>ev_run的工作内容，在<a href="http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod#FUNCTIONS_CONTROLLING_EVENT_LOOPS">官方文档的API</a>中有详细说明，通过文档有助于对ev_run的理解。具体的代码有点长，在这里就不贴了，感兴趣的同学可以在ev.c中查看ev_run的实现代码。剔除掉条件检查和一些无关紧要的代码，主要的流程如下图所示。</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/4f/7f/ea/36f77813a07b89788a1ede622c3d34f9.png" alt="ev_run流程图"/>
+    <img src="http://pic.yupoo.com/changchang005/CLxkoKxR/xdzZk.png" alt="ev_run流程图"/>
 </center>
 
 
@@ -940,7 +940,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 <p>Mina的底层依赖的主要是Java NIO库，上层提供的是基于事件的异步接口。其整体的结构如下：</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/ed/3e/5a/8010243e759a9099b2839dc501fb76a8.png" alt="mina-flow" title="mina-flow" width="854" height="600" />
+    <img src="http://pic.yupoo.com/changchang005/CLxgHNmn/medish.jpg" alt="mina-flow" title="mina-flow" width="854" height="600" />
 </center>
 
 
@@ -1019,7 +1019,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 <p>前面介绍了Mina总体的层次结构，那么在Mina里面是怎么使用Java NIO和进行线程调度的呢？这是提高IO处理性能的关键所在。Mina的线程调度原理主要如下图所示：</p>
 
 <center>
-  <img src="http://i.6.cn/cvbnm/bd/46/16/9a9fb8a01640ec6bed25da60ca3eb368.png" alt="mina-threads" title="mina-threads" width="696" height="270" />
+  <img src="http://pic.yupoo.com/changchang005/CLxgkBXm/BXtdS.png" alt="mina-threads" title="mina-threads" width="696" height="270" />
 </center>
 
 
@@ -1046,7 +1046,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 <p>那么线程池应该加在什么地方呢？正如前面所提到过的：IoFilterChain是Mina的扩展点。没错，Mina里是通过IoFilter的形式来为处理流程添加线程池的。Mina的线程模型主要有一下这几种形式：</p>
 
 <center>
-  <img src="http://i.6.cn/cvbnm/25/fc/8d/ef9f26650f7b167878bdbbabea07bd3d.png" alt="mina-thread-model" title="mina-thread-model" width="902" height="653" />
+  <img src="http://pic.yupoo.com/changchang005/CLxgk6ag/medish.jpg" alt="mina-thread-model" title="mina-thread-model" width="902" height="653" />
 </center>
 
 
@@ -1126,7 +1126,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 <p>seq-queue实例的状态机可以简单用下面的图来描述：</p>
 
 <center>
-    <img title="seq-queue-state" src="http://i.6.cn/cvbnm/e6/4c/43/a595faf0f221792d5afe4b16ef5d5877.jpg" alt="seq-queue-state" width="300" height="254" />
+    <img title="seq-queue-state" src="http://pic.yupoo.com/changchang005/CLxgCDOQ/Q1sdL.jpg" alt="seq-queue-state" width="300" height="254" />
 </center>
 
 
@@ -1288,7 +1288,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
     <content type="html"><![CDATA[<p>本文中我会展示一种开发模型，一年前该模型就已经被我用在所有的项目中（包括工作中的项目和私有项目），结果是非常成功的。我早就想为此写点东西，可直到现在才有时间。本文不会讲述任何项目的细节，只会涉及到分支策略和发布管理。</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/eb/2c/c6/4bf7e68c49e29c353a01bd6b782a1be3.png" title="git-branch-1" />
+    <img src="http://pic.yupoo.com/changchang005/CLxudUBu/8Tmzb.png" title="git-branch-1" />
 </center>
 
 
@@ -1314,7 +1314,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 <p>在这个分支模型中我们使用的，且被证实工作得很好的仓库配置，其核心是一个中心“真理”仓库。注意只有该仓库才被认为是中心库（由于Git是 DVCS [分布式版本控制系统]，在技术层面没有中心库这一东西）。之后我们用origin指代该仓库，因为大多数Git用户都熟悉这个名称。</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/17/a6/e7/0f1b453751094c2885985dd21d1e8f1a.png" title="git-branch-2" />
+    <img src="http://pic.yupoo.com/changchang005/CLxuzjWi/I4nHp.png" title="git-branch-2" />
 </center>
 
 
@@ -1325,7 +1325,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 <h1>主要分支</h1>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/50/36/a0/7dad2753d8861db23ff3a29f00eb029a.png" title="git-branch-3" />
+    <img src="http://pic.yupoo.com/changchang005/CLxuzGpf/tUo73.png" title="git-branch-3" />
 </center>
 
 
@@ -1365,7 +1365,7 @@ ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了
 <h2>特性分支</h2>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/6e/e2/49/3231978cc6c3c3e95acee56c968a9100.png" title="git-branch-4" />
+    <img src="http://pic.yupoo.com/changchang005/CLxhIVhb/ikHZR.png" title="git-branch-4" />
 </center>
 
 
@@ -1409,7 +1409,7 @@ $ git push origin develop
 <p>上述代码中的–no-ff标记会使合并永远创建一个新的commit对象，即使该合并能以fast-forward的方式进行。这么做可以避免丢失特性分支存在的历史信息，同时也能清晰的展现一组commit一起构成一个特性。比较下面的图：</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/1c/69/38/a90013bb4166845bd7905ec1572137b0.png" title="git-branch-5" />
+    <img src="http://pic.yupoo.com/changchang005/CLxhIE9v/medish.jpg" title="git-branch-5" />
 </center>
 
 
@@ -1494,7 +1494,7 @@ Deleted branch release-1.2 (was ff452fe).
 <h2>热补丁分支</h2>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/26/e2/33/a303d38c6c9c561c8bcc22f73f8cbad4.png" title="git-branch-6" />
+    <img src="http://pic.yupoo.com/changchang005/CLxhnB1K/s5xDD.png" title="git-branch-6" />
 </center>
 
 
@@ -1744,14 +1744,14 @@ module.exports.a = 1;
 <p>入口代码设置</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/3a/c3/37/541e0e3c62bd982ab65269db701d0ded.jpg" title="sgs1"/>
+    <img src="http://pic.yupoo.com/changchang005/CLxhI645/4BJKI.jpg" title="sgs1"/>
 </center>
 
 
 <p>参数设置</p>
 
 <center>
-    <img src="http://i.6.cn/cvbnm/21/9a/4a/532700adec8777f03d185941956c7270.jpg" title="sgs2" />
+    <img src="http://pic.yupoo.com/changchang005/CLxhmXSm/no0tn.jpg" title="sgs2" />
 </center>
 
 

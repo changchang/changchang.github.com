@@ -4,7 +4,7 @@
   <title><![CDATA[Category: nodejs | Little Cat in Big World]]></title>
   <link href="http://codingcat.net/blog/categories/nodejs/atom.xml" rel="self"/>
   <link href="http://codingcat.net/"/>
-  <updated>2012-11-16T09:56:32+08:00</updated>
+  <updated>2013-04-06T10:52:48+08:00</updated>
   <id>http://codingcat.net/</id>
   <author>
     <name><![CDATA[changchang]]></name>
@@ -214,7 +214,7 @@ queue.push(function(task) {
 <p>seq-queue实例的状态机可以简单用下面的图来描述：</p>
 
 <center>
-    <img title="seq-queue-state" src="http://i.6.cn/cvbnm/e6/4c/43/a595faf0f221792d5afe4b16ef5d5877.jpg" alt="seq-queue-state" width="300" height="254" />
+    <img title="seq-queue-state" src="http://pic.yupoo.com/changchang005/CLxgCDOQ/Q1sdL.jpg" alt="seq-queue-state" width="300" height="254" />
 </center>
 
 
