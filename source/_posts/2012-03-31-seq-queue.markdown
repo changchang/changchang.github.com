@@ -43,7 +43,7 @@ seq-queue的结构非常简单，可以看作是一个FIFO队列，里面的任�
 seq-queue实例的状态机可以简单用下面的图来描述：
 
 <center>
-	<img title="seq-queue-state" src="http://i.6.cn/cvbnm/e6/4c/43/a595faf0f221792d5afe4b16ef5d5877.jpg" alt="seq-queue-state" width="300" height="254" />
+	<img title="seq-queue-state" src="http://pic.yupoo.com/changchang005/CLxgCDOQ/Q1sdL.jpg" alt="seq-queue-state" width="300" height="254" />
 </center>
 
 queue实例创建后默认是idle状态。

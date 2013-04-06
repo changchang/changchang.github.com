@@ -91,7 +91,7 @@ keywords: libev, 源代码分析, 设计思想
 
 总的来看，libev其实是实现了[Reactor模式](http://delivery.acm.org/10.1145/230000/226255/p65-schmidt.pdf?ip=112.10.101.170&acc=ACTIVE%20SERVICE&CFID=175798313&CFTOKEN=73864269&__acm__=1350399757_644772085f9a19ff9d2fdb35159272bf)。当中主要包含了这么几个角色：watcher， ev_loop和ev_run。
 
-##watcher 
+##watcher
 watcher是Reactor中的Event Handler。一方面，它向事件循环提供了统一的调用接口（按类型区分）;另一方面，它是外部代码的注入口，维护着具体的watcher信息，如：绑定的回调函数，watcher的优先级，是否激活等。
 
 在ev.h中我们可以看到各种watcher的定义，如：ev_io, ev_timer等。其中，watcher的公共属性定义如下：
@@ -154,7 +154,7 @@ ev_vars.h中定义了ev_loop的各种属性。在ev_wrap.h中则定义了与loop
 在一轮事件循环结束后，则会根据优先级，依次触发就绪的watcher。
 
 <center>
-	<img src="http://i.6.cn/cvbnm/f9/d3/73/334a86e7c2d386ed8c3e3174f3a543a3.png" alt="pendings结构图"/>
+	<img src="http://pic.yupoo.com/changchang005/CLxk3UG7/medish.jpg" alt="pendings结构图"/>
 </center>
 
 ##bool ev_run(loop, flag)
@@ -163,7 +163,7 @@ ev_run函数是执行事件循环的引擎，即Reactor模式中的select方法�
 ev_run的工作内容，在[官方文档的API](http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod#FUNCTIONS_CONTROLLING_EVENT_LOOPS)中有详细说明，通过文档有助于对ev_run的理解。具体的代码有点长，在这里就不贴了，感兴趣的同学可以在ev.c中查看ev_run的实现代码。剔除掉条件检查和一些无关紧要的代码，主要的流程如下图所示。
 
 <center>
-	<img src="http://i.6.cn/cvbnm/4f/7f/ea/36f77813a07b89788a1ede622c3d34f9.png" alt="ev_run流程图"/>
+	<img src="http://pic.yupoo.com/changchang005/CLxkoKxR/xdzZk.png" alt="ev_run流程图"/>
 </center>
 
 可以看到，ev_run的主要工作就是按watcher的分类，先后检查各种类型的watcher上的事件，通过ev_feed_event函数将就绪的watcher加入到pending的数据结构中。最后调用ev_invoke_pending，触发pending中的watcher。完了以后会检查，是否还有active的watcher以及是否有ev_break调用过，然后决定是否要继续下一轮循环。

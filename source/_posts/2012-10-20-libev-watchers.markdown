@@ -18,7 +18,7 @@ keywords: libev, 源代码分析, watcher, ev_io, ev_timer, ev_prepare, ev_check
 ev_io的主要使命就是监听并响应指定文件描述fd上的读写事件。对fd的监听工作，主要委托给底层的io库来完成。libev对目前比较流行的io库都提供了支持，如：select, epoll以及windows的iocp等。在这里libev使用了Adaptor模式，通过统一的适配层隐藏了底层io库的细节。在loop初始化的时候（loop_init），会根据配置将函数指针绑定到底层的io库函数对应的适配代码上。所以，开发者可以很方便的把代码切换到不同的底层实现上。相关的函数有：backend_modify，向底层库注册fd事件，如：epoll的epoll_ctl；backend_poll，向底层库轮询fd上是否有感兴趣的事件发生，如：epoll的epoll_wait。适配器实现的代码可以在ev_LIB.c中看到，LIB是io库的名字，如：ev_epoll.c，ev_win32.c等。
 
 <center>
-	<img src="http://i.6.cn/cvbnm/c6/ef/2a/ac177b3435994c7088ef9eb3d32394f2.png" alt="ev_io层次结构图" />
+	<img src="http://pic.yupoo.com/changchang005/CLxkoazt/medish.jpg" alt="ev_io层次结构图" />
 </center>
 
 ##ev_io的结构
@@ -36,7 +36,7 @@ ev_io的主要使命就是监听并响应指定文件描述fd上的读写事件�
 ev_io从它诞生的那一刻起，便于文件描述符紧密结合在一起了。ev_io的实例被存储在loop->anfds的结构中。anfds的结构如下图所示：
 
 <center>
-	<img src="http://i.6.cn/cvbnm/9c/37/cc/91f3e08d93a0d2f41b936c6f2f4895f5.png" alt="anfds结构图"/>
+	<img src="http://pic.yupoo.com/changchang005/CLxk38Cx/medish.jpg" alt="anfds结构图"/>
 </center>
 
 anfds其实是一个数组，它使用fd作为下标，数组中的元素是一个ANFD的结构。ANFD是一个维护fd信息的结构体。其中，events记录了当前fd上感兴趣的事件的记录。head是watcher列表的头指针，这个列表就是在这个fd上注册的watcher列表。当fd的大小超出了anfds的容量，anfds会进行相应的扩展。

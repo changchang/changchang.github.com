@@ -12,7 +12,7 @@ keywords: git, branch, model
 本文中我会展示一种开发模型，一年前该模型就已经被我用在所有的项目中（包括工作中的项目和私有项目），结果是非常成功的。我早就想为此写点东西，可直到现在才有时间。本文不会讲述任何项目的细节，只会涉及到分支策略和发布管理。
 
 <center>
-	<img src="http://i.6.cn/cvbnm/eb/2c/c6/4bf7e68c49e29c353a01bd6b782a1be3.png" title="git-branch-1" />
+	<img src="http://pic.yupoo.com/changchang005/CLxudUBu/8Tmzb.png" title="git-branch-1" />
 </center>
 
 <!--more-->
@@ -34,7 +34,7 @@ keywords: git, branch, model
 在这个分支模型中我们使用的，且被证实工作得很好的仓库配置，其核心是一个中心“真理”仓库。注意只有该仓库才被认为是中心库（由于Git是 DVCS [分布式版本控制系统]，在技术层面没有中心库这一东西）。之后我们用origin指代该仓库，因为大多数Git用户都熟悉这个名称。
 
 <center>
-	<img src="http://i.6.cn/cvbnm/17/a6/e7/0f1b453751094c2885985dd21d1e8f1a.png" title="git-branch-2" />
+	<img src="http://pic.yupoo.com/changchang005/CLxuzjWi/I4nHp.png" title="git-branch-2" />
 </center>
 
 每个开发者都对origin做push和pull操作。不过除了这种中心化的push-pull关系外，每个开发者还可以从其他开发者或者小组处 pull变更。例如，可能两个或更多的开发者一起开发一个大的特性，在往origin永久性的push工作代码之前，他们之间可以执行一些去中心化的操 作。在上图中，分别有Alice和Bob、Alice和David、Clair和David这些小组。
@@ -44,7 +44,7 @@ keywords: git, branch, model
 #主要分支
 
 <center>
-	<img src="http://i.6.cn/cvbnm/50/36/a0/7dad2753d8861db23ff3a29f00eb029a.png" title="git-branch-3" />
+	<img src="http://pic.yupoo.com/changchang005/CLxuzGpf/tUo73.png" title="git-branch-3" />
 </center>
 
 此开发模型的核心主要受现有的模型启发。中心仓库包含了两个主要分支，这两个分支的寿命是无限的：
@@ -77,7 +77,7 @@ keywords: git, branch, model
 ##特性分支
 
 <center>
-	<img src="http://i.6.cn/cvbnm/6e/e2/49/3231978cc6c3c3e95acee56c968a9100.png" title="git-branch-4" />
+	<img src="http://pic.yupoo.com/changchang005/CLxhIVhb/ikHZR.png" title="git-branch-4" />
 </center>
 
 * 可能的分支来源：develop
@@ -115,7 +115,7 @@ $ git push origin develop
 上述代码中的–no-ff标记会使合并永远创建一个新的commit对象，即使该合并能以fast-forward的方式进行。这么做可以避免丢失特性分支存在的历史信息，同时也能清晰的展现一组commit一起构成一个特性。比较下面的图：
 
 <center>
-	<img src="http://i.6.cn/cvbnm/1c/69/38/a90013bb4166845bd7905ec1572137b0.png" title="git-branch-5" />
+	<img src="http://pic.yupoo.com/changchang005/CLxhIE9v/medish.jpg" title="git-branch-5" />
 </center>
 
 在第2张图中，已经无法一眼从Git历史中看到哪些commit对象构成了一个特性——你需要阅读日志以获得该信息。在这种情况下，回退（revert）整个特性（一组commit）就会比较麻烦，而如果使用了–no-diff就会简单很多。
@@ -192,7 +192,7 @@ Deleted branch release-1.2 (was ff452fe).
 ##热补丁分支
 
 <center>
-	<img src="http://i.6.cn/cvbnm/26/e2/33/a303d38c6c9c561c8bcc22f73f8cbad4.png" title="git-branch-6" />
+	<img src="http://pic.yupoo.com/changchang005/CLxhnB1K/s5xDD.png" title="git-branch-6" />
 </center>
 
 * 可能的分支来源：master

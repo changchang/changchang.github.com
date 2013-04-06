@@ -15,13 +15,13 @@ keywords: RedDwarf, game server, configure
 
 入口代码设置
 <center>
-	<img src="http://i.6.cn/cvbnm/3a/c3/37/541e0e3c62bd982ab65269db701d0ded.jpg" title="sgs1"/>
+	<img src="http://pic.yupoo.com/changchang005/CLxhI645/4BJKI.jpg" title="sgs1"/>
 </center>
 
 
 参数设置
 <center>
-	<img src="http://i.6.cn/cvbnm/21/9a/4a/532700adec8777f03d185941956c7270.jpg" title="sgs2" />
+	<img src="http://pic.yupoo.com/changchang005/CLxhmXSm/no0tn.jpg" title="sgs2" />
 </center>
 
 代码入口是com.sun.sgs.impl.kernel.Kernel，配置文件主要在app.properties，指向它就可以了，bdb运行环境依赖的native包需要指明一下。如果用的是0.10.2的话，用的bdb的je（java edition）版本，native也免了。可以加个sgs-logging.properties文件来设一下日志level，都可以从SGS_HOME/conf目录下拷的。

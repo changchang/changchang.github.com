@@ -62,7 +62,7 @@ keywords: libeio, aio, code analytics
 libeio主要是通过线程池来模拟异步操作，大致流程如下图所示：
 
 <center>
-	<img src="http://i.6.cn/cvbnm/dc/4b/1b/51f2c6bc78aaff156a5f09ee5c7dac65.png" title="libeio-arch" />
+	<img src="http://pic.yupoo.com/changchang005/CLxkiamL/medish.jpg" title="libeio-arch" />
 </center>
 
 在主线程中可以通过libeio提供的异步接口发起请求，如例子中的eio_mkdir。之后请求的信息和完成后的回调函数会封装成eio_req对象，存放到req_queue队列中。线程池中的工作线程会从eio_queue中取出请求来处理。这里将会调用相关的系统接口，可能会发生阻塞。工作线程处理完毕后，将结果保存在eio_req对象中，并将其填入res_queue中。而主线程要做的就是调用eio_poll来处理res_queue中就绪的请求，触发其中的回调函数。

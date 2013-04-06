@@ -19,7 +19,7 @@ Mina是Apache社区维护的一个开源的高性能IO框架，在业界内久�
 Mina的底层依赖的主要是Java NIO库，上层提供的是基于事件的异步接口。其整体的结构如下：
 
 <center>
-    <img src="http://i.6.cn/cvbnm/ed/3e/5a/8010243e759a9099b2839dc501fb76a8.png" alt="mina-flow" title="mina-flow" width="854" height="600" />
+    <img src="http://pic.yupoo.com/changchang005/CLxgHNmn/medish.jpg" alt="mina-flow" title="mina-flow" width="854" height="600" />
 </center>
 
 ##IoService
@@ -78,7 +78,7 @@ EchoHandler.java
 前面介绍了Mina总体的层次结构，那么在Mina里面是怎么使用Java NIO和进行线程调度的呢？这是提高IO处理性能的关键所在。Mina的线程调度原理主要如下图所示：
 
 <center>
-  <img src="http://i.6.cn/cvbnm/bd/46/16/9a9fb8a01640ec6bed25da60ca3eb368.png" alt="mina-threads" title="mina-threads" width="696" height="270" />
+  <img src="http://pic.yupoo.com/changchang005/CLxgkBXm/BXtdS.png" alt="mina-threads" title="mina-threads" width="696" height="270" />
 </center>
 
 ##Acceptor与Connector线程
@@ -104,7 +104,7 @@ Processor线程主要负责具体的IO读写操作和执行后面的IoFilterChai
 那么线程池应该加在什么地方呢？正如前面所提到过的：IoFilterChain是Mina的扩展点。没错，Mina里是通过IoFilter的形式来为处理流程添加线程池的。Mina的线程模型主要有一下这几种形式：
 
 <center>
-  <img src="http://i.6.cn/cvbnm/25/fc/8d/ef9f26650f7b167878bdbbabea07bd3d.png" alt="mina-thread-model" title="mina-thread-model" width="902" height="653" />
+  <img src="http://pic.yupoo.com/changchang005/CLxgk6ag/medish.jpg" alt="mina-thread-model" title="mina-thread-model" width="902" height="653" />
 </center>
 
 第一种模型是单线程模型，也是Mina默认线程模型。也就是Processor包办了从底层IO到上层的IoHandler逻辑的所有执行工作。这种模型比较适合于处理逻辑简单，能快速返回的情况。
